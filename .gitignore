@@ -1,0 +1,12 @@
+.env
+.env.save
+data/
+.ruff_cache/
+**/.ruff_cache/
+**/__pycache__/
+*.py[cod]
+*.bak
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
