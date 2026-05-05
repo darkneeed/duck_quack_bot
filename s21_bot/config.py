@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass, field
-from typing import FrozenSet
+from typing import Any, FrozenSet
 
 
 def _require(key: str) -> str:
@@ -38,7 +38,7 @@ def _opt_int_list(key: str) -> list[int]:
     return [int(x) for x in _opt_list(key)]
 
 
-@dataclass(frozen=True)
+@dataclass
 class Config:
     bot_token: str
     admin_ids: FrozenSet[int]
@@ -76,6 +76,7 @@ class Config:
     enable_digest: bool = field(default=True)
     enable_workstation: bool = field(default=True)
     enable_newcomer: bool = field(default=True)
+    auto_delete_join_messages: bool = field(default=False)
 
     cmd_where_scope: str = field(default="BOTH")
     cmd_peers_scope: str = field(default="BOTH")
@@ -87,6 +88,68 @@ class Config:
 
     support_contacts: list = field(default_factory=list)
     social_trust_project_ids: frozenset = field(default_factory=frozenset)
+
+
+def _parse_bool(value: str) -> bool:
+    return value.strip().lower() not in ("0", "false", "off", "no", "")
+
+
+def _serialize_field(value: Any) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (set, frozenset, list, tuple)):
+        return ",".join(str(x) for x in value)
+    return str(value)
+
+
+def serialize_config(config: Config) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for name in config.__dataclass_fields__:
+        out[name] = _serialize_field(getattr(config, name))
+    return out
+
+
+def _coerce_field(name: str, raw_value: str, current: Config) -> Any:
+    base = getattr(current, name)
+    int_list_fields = {"review_notify_minutes"}
+    int_set_fields = {"social_trust_project_ids", "admin_ids"}
+    if isinstance(base, bool):
+        return _parse_bool(raw_value)
+    if name in int_list_fields:
+        return [int(x.strip()) for x in raw_value.split(",") if x.strip()]
+    if name in int_set_fields:
+        return frozenset(int(x.strip()) for x in raw_value.split(",") if x.strip())
+    if isinstance(base, int) and not isinstance(base, bool):
+        return int(raw_value.strip())
+    if base is None:
+        return int(raw_value.strip()) if raw_value.strip() else None
+    if isinstance(base, list):
+        if base and isinstance(base[0], int):
+            return [int(x.strip()) for x in raw_value.split(",") if x.strip()]
+        return [x.strip() for x in raw_value.split(",") if x.strip()]
+    if isinstance(base, (set, frozenset)):
+        if base and all(isinstance(x, int) for x in base):
+            return frozenset(int(x.strip()) for x in raw_value.split(",") if x.strip())
+        return frozenset(x.strip() for x in raw_value.split(",") if x.strip())
+    return raw_value
+
+
+def apply_config_overrides(config: Config, overrides: dict[str, str]) -> None:
+    for key, raw_value in overrides.items():
+        if not hasattr(config, key):
+            continue
+        try:
+            setattr(config, key, _coerce_field(key, raw_value, config))
+        except Exception:
+            continue
+
+
+def set_config_value(config: Config, key: str, raw_value: str) -> Any:
+    if not hasattr(config, key):
+        raise KeyError(key)
+    parsed = _coerce_field(key, raw_value, config)
+    setattr(config, key, parsed)
+    return parsed
 
 
 def load_config() -> Config:
@@ -128,6 +191,7 @@ def load_config() -> Config:
         enable_digest=os.environ.get("ENABLE_DIGEST", "1") not in ("0", "false", "off"),
         enable_workstation=os.environ.get("ENABLE_WORKSTATION", "1") not in ("0", "false", "off"),
         enable_newcomer=os.environ.get("ENABLE_NEWCOMER", "1") not in ("0", "false", "off"),
+        auto_delete_join_messages=_parse_bool(os.environ.get("AUTO_DELETE_JOIN_MESSAGES", "0")),
         cmd_where_scope=os.environ.get("CMD_WHERE_SCOPE", "BOTH").upper(),
         cmd_peers_scope=os.environ.get("CMD_PEERS_SCOPE", "BOTH").upper(),
         cmd_logtime_scope=os.environ.get("CMD_LOGTIME_SCOPE", "BOTH").upper(),

@@ -98,7 +98,7 @@ async def _check_and_respond(message: Message, state: FSMContext) -> bool:
                 await message.answer(
                     START_APPROVED_GREETING.format(login=login),
                     parse_mode="HTML",
-                    reply_markup=cabinet_kb(),
+                    reply_markup=cabinet_kb(is_admin=message.from_user.id in config.admin_ids),
                 )
                 return True
             case "pending":

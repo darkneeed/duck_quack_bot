@@ -99,12 +99,14 @@ def verification_result_kb(result: str, voter_name: str = "") -> InlineKeyboardM
 from ..strings import CABINET_BTN_PROFILE, CABINET_BTN_GENCODE, CABINET_BTN_MYCODES, CABINET_BTN_HELP  # noqa: E402
 
 
-def cabinet_kb() -> InlineKeyboardMarkup:
+def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu for approved users."""
     builder = InlineKeyboardBuilder()
     builder.button(text=CABINET_BTN_PROFILE, callback_data="cabinet:profile")
     builder.button(text=CABINET_BTN_GENCODE, callback_data="cabinet:gencode")
     builder.button(text=CABINET_BTN_MYCODES, callback_data="cabinet:mycodes")
     builder.button(text=CABINET_BTN_HELP, callback_data="cabinet:help")
+    if is_admin:
+        builder.button(text="🛠 Админ-панель", callback_data="cabinet:admin_panel")
     builder.adjust(1)
     return builder.as_markup()

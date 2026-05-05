@@ -26,6 +26,11 @@ def get_db() -> _ConnectionContextManager:
     return _ConnectionContextManager(_DB_PATH)
 
 
+def set_db_path(path: str) -> None:
+    global _DB_PATH
+    _DB_PATH = path
+
+
 async def init_db() -> None:
     async with get_db() as db:
         await db.execute("""
@@ -156,6 +161,22 @@ async def init_db() -> None:
                 created_by    INTEGER NOT NULL,
                 created_at    TEXT    NOT NULL,
                 used          INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bot_settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL,
+                updated_at  TEXT,
+                updated_by  INTEGER
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS join_messages (
+                chat_id     INTEGER NOT NULL,
+                message_id  INTEGER NOT NULL,
+                created_at  TEXT NOT NULL,
+                PRIMARY KEY (chat_id, message_id)
             )
         """)
         await db.commit()

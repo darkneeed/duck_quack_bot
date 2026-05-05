@@ -6,8 +6,9 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-from s21_bot.config import load_config
-from s21_bot.db import init_db
+from s21_bot.config import apply_config_overrides, load_config
+from s21_bot.db import BotSettingsRepo, init_db
+from s21_bot.db.models import set_db_path
 from s21_bot.handlers import setup_routers
 from s21_bot.middlewares import BanCheckMiddleware
 from s21_bot.services import (
@@ -28,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 async def main() -> None:
     config = load_config()
+    set_db_path(config.db_path)
     await init_db()
+    apply_config_overrides(config, await BotSettingsRepo.get_all())
 
     s21_client = S21Client(
         config.s21_username,

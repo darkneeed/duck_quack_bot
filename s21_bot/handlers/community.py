@@ -1,11 +1,12 @@
 from __future__ import annotations
 import logging
-from aiogram import Bot, Router
+from aiogram import Bot, F, Router
 from aiogram.methods import SetChatMemberTag
-from aiogram.types import ChatMemberUpdated
+from aiogram.types import ChatMemberUpdated, Message
 from aiogram.filters import ChatMemberUpdatedFilter, JOIN_TRANSITION
 from ..config import Config
 from ..db import UserRepo
+from ..db.join_message_repo import JoinMessageRepo
 from ..db.guest_invite_repo import GuestInviteRepo
 from ..strings import (
     GUEST_WELCOME,
@@ -44,6 +45,20 @@ async def _alert(bot: Bot, config: Config, text: str) -> None:
         )
     except Exception as exc:
         logger.error("Failed to send alert: %s", exc)
+
+
+@router.message(F.new_chat_members)
+async def on_join_service_message(message: Message, bot: Bot, config: Config) -> None:
+    if message.chat.id != config.community_chat_id:
+        return
+    await JoinMessageRepo.add(message.chat.id, message.message_id)
+    if not getattr(config, "auto_delete_join_messages", False):
+        return
+    try:
+        await bot.delete_message(message.chat.id, message.message_id)
+        await JoinMessageRepo.remove(message.chat.id, message.message_id)
+    except Exception as exc:
+        logger.debug("Failed to delete join service message %s: %s", message.message_id, exc)
 
 
 @router.chat_member(ChatMemberUpdatedFilter(JOIN_TRANSITION))
