@@ -6,6 +6,7 @@ from aiogram.filters import Filter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
+from ..command_catalog import render_approved_short_help
 from ..config import Config
 from ..db import ApplicationRepo, UserRepo
 from ..db.workstation_state_repo import WorkstationStateRepo
@@ -15,7 +16,6 @@ from ..utils import now_iso
 from ..utils.branding import format_invite_message
 from ..utils.telegram import safe_callback_answer, send_message_with_topic
 from ..strings import (
-    APPROVED_USEFUL_COMMANDS,
     MOD_APP_NOT_FOUND, MOD_APP_ALREADY_DECIDED, MOD_APPROVE_ERROR,
     MOD_APPROVED_ANSWER, MOD_REJECTED_ANSWER, MOD_NOOP, MOD_ERROR_ALERT,
     REJECT_REASON_PROMPT, REJECT_COOLDOWN_PROMPT, REJECT_REASON_PREFIX, REJECT_NO_REASON,
@@ -103,7 +103,7 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config) -> None:
         )
         await bot.send_message(
             chat_id=app["tg_id"],
-            text=APPROVED_USEFUL_COMMANDS,
+            text=render_approved_short_help(config),
             parse_mode="HTML",
         )
     except Exception as exc:

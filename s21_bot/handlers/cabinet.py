@@ -8,6 +8,7 @@ from aiogram.filters import Command
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from ..config import Config
+from ..command_catalog import render_cabinet_help
 from ..db import UserRepo
 from ..db.invite_code_repo import InviteCodeRepo
 from ..services import S21Client
@@ -16,7 +17,6 @@ from ..services.invite_code_service import build_bot_link, create_invite_code
 from ..strings import (
     CABINET_CODES_HEADER,
     CABINET_GENCODE_ERROR,
-    CABINET_HELP_TEXT,
     CABINET_NO_CODES,
     INVITE_GENCODE_CAPTION,
     ONLY_APPROVED,
@@ -146,6 +146,6 @@ async def cb_cabinet_mycodes(callback: CallbackQuery) -> None:
 
 
 @router.callback_query(F.data == "cabinet:help")
-async def cb_cabinet_help(callback: CallbackQuery) -> None:
+async def cb_cabinet_help(callback: CallbackQuery, config: Config) -> None:
     await safe_callback_answer(callback)
-    await callback.message.answer(CABINET_HELP_TEXT, parse_mode="HTML")
+    await callback.message.answer(render_cabinet_help(config), parse_mode="HTML")

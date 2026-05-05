@@ -11,7 +11,7 @@ from ..config import Config
 
 
 from ..db.moderator_repo import ModeratorRepo
-from ..services.antispam import check_message, get_config, set_config, set_enabled
+from ..services.antispam import get_config, set_config, set_enabled
 from ..services.community_moderation import (
     display_name,
     parse_reply_or_id,
@@ -346,12 +346,6 @@ async def cmd_events_community(message: Message, s21, config: Config) -> None:
         return
     for event in events[:10]:
         await message.reply(_format_event(event, config), parse_mode="HTML", disable_web_page_preview=True)
-
-
-@router.message(_InCommunity())
-async def antispam_check(message: Message, bot: Bot, config: Config) -> None:
-    await check_message(message, bot, config)
-
 
 @router.message(_IsMod(), Command("антиспам", "antispam", ignore_case=True))
 async def cmd_antispam(message: Message, config: Config) -> None:

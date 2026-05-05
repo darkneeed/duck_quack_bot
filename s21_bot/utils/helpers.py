@@ -45,6 +45,7 @@ def build_moderation_card(
     rc_username: Optional[str] = None,
     teammates: Optional[list[str]] = None,
     invite_code: Optional[str] = None,
+    invite_author: Optional[str] = None,
 ) -> str:
     lines = [
         CARD_HEADER.format(app_id=app_id),
@@ -68,7 +69,9 @@ def build_moderation_card(
         logins_str = ", ".join(f"<code>{l}</code>" for l in teammates)
         lines.append(CARD_TEAMMATES.format(logins=logins_str))
     if invite_code:
-        lines.append(f"🎟 <b>Инвайт-код:</b> <code>{invite_code}</code>")
+        lines.append(f"🎟 <b>Инвайт:</b> <code>{invite_code}</code>")
+    if invite_author:
+        lines.append(f"🙋 <b>Автор инвайта:</b> {invite_author}")
     if user_comment:
         lines.append(CARD_COMMENT.format(comment=user_comment))
     return "\n".join(lines)

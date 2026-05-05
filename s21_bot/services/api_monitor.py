@@ -19,7 +19,6 @@ async def run_api_monitor(bot: Bot, s21: S21Client, config: Config, threshold_mi
     logger.info("API monitor started, threshold=%dmin", threshold_minutes)
     _down_since: float | None = None
     _alerted = False
-    _recovered_alerted = False
 
     while True:
         await asyncio.sleep(_CHECK_INTERVAL)
@@ -27,14 +26,13 @@ async def run_api_monitor(bot: Bot, s21: S21Client, config: Config, threshold_mi
             await s21.get_participant(config.s21_username)
             if _down_since is not None:
                 down_minutes = int((time.monotonic() - _down_since) / 60)
-                if not _recovered_alerted:
+                if _alerted:
                     await _send(bot, config,
                         f"✅ <b>S21 API восстановлен</b>\n"
                         f"Время недоступности: ~{down_minutes} мин."
                     )
                 _down_since = None
                 _alerted = False
-                _recovered_alerted = False
             logger.debug("API monitor: OK")
         except asyncio.CancelledError:
             raise
@@ -57,16 +55,16 @@ async def run_api_monitor(bot: Bot, s21: S21Client, config: Config, threshold_mi
 
             if _down_since is not None:
                 down_minutes = int((time.monotonic() - _down_since) / 60)
-                await _send(
-                    bot,
-                    config,
-                    f"✅ <b>S21 API восстановлен</b>\n"
-                    f"Время недоступности: ~{down_minutes} мин.\n"
-                    f"ℹ️ Сейчас API отвечает <code>429 Too Many Requests</code>.",
-                )
+                if _alerted:
+                    await _send(
+                        bot,
+                        config,
+                        f"✅ <b>S21 API восстановлен</b>\n"
+                        f"Время недоступности: ~{down_minutes} мин.\n"
+                        f"ℹ️ Сейчас API отвечает <code>429 Too Many Requests</code>.",
+                    )
                 _down_since = None
                 _alerted = False
-                _recovered_alerted = False
             logger.warning("API monitor: S21 API rate limited: %s", exc)
         except Exception as exc:
             if _down_since is None:

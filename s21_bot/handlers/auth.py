@@ -557,6 +557,7 @@ async def _submit_application(
         logger.warning("Teammate fetch for card failed for %s: %s", login, exc)
 
     invite_code_str = None
+    invite_author_str = None
     try:
         from ..db.invite_code_repo import InviteCodeRepo
 
@@ -565,6 +566,17 @@ async def _submit_application(
             code_row = await InviteCodeRepo.get_by_id(code_id)
             if code_row:
                 invite_code_str = code_row["code"]
+                creator_id = code_row["creator_user_id"]
+                creator = await UserRepo.get_by_tg_id(creator_id)
+                if creator:
+                    creator_login = creator["school_login"] or ""
+                    creator_name = creator["tg_name"] or ""
+                    if creator_name and creator_login and creator_login not in creator_name:
+                        invite_author_str = f"{creator_name} · <code>{creator_login}</code>"
+                    else:
+                        invite_author_str = creator_name or (f"<code>{creator_login}</code>" if creator_login else f"<code>{creator_id}</code>")
+                else:
+                    invite_author_str = f"<code>{creator_id}</code>"
     except Exception:
         pass
 
@@ -581,6 +593,7 @@ async def _submit_application(
         rc_username=rc_username,
         teammates=teammate_logins if teammate_logins else None,
         invite_code=invite_code_str,
+        invite_author=invite_author_str,
     )
 
     try:

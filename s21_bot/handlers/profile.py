@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from ..config import Config
@@ -12,11 +12,18 @@ from ..utils.profile import render_profile_text
 
 logger = logging.getLogger(__name__)
 router = Router(name="profile")
-router.message.filter(F.chat.type == "private")
 
 
 @router.message(Command("profile"))
 async def cmd_profile(message: Message, s21: S21Client, config: Config) -> None:
+    is_private = message.chat.type == "private"
+    if config.cmd_profile_scope == "PRIVATE" and not is_private:
+        return
+    if config.cmd_profile_scope == "PUBLIC" and is_private:
+        return
+    if config.cmd_profile_scope == "OFF":
+        return
+
     assert message.from_user is not None
     user = await UserRepo.get_by_tg_id(message.from_user.id)
     if not user or user["status"] != "approved" or not user["school_login"]:

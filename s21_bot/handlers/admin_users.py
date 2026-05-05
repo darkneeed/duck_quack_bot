@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from ..command_catalog import render_approved_short_help
 from ..config import Config
 from ..db import ApplicationRepo, AuthAttemptRepo, UserRepo
 from ..services import S21Client
@@ -234,6 +235,7 @@ async def cmd_approve(message: Message, bot: Bot, config: Config) -> None:
 
     try:
         await bot.send_message(chat_id=app["tg_id"], text=format_invite_message(invite_link, config))
+        await bot.send_message(chat_id=app["tg_id"], text=render_approved_short_help(config), parse_mode="HTML")
     except Exception as exc:
         logger.error("Failed to notify user %d: %s", app["tg_id"], exc)
         await message.reply("Одобрено, но не удалось отправить ссылку. Ссылка: " + invite_link, parse_mode="HTML")

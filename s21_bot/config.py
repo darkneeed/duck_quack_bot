@@ -38,6 +38,46 @@ def _opt_int_list(key: str) -> list[int]:
     return [int(x) for x in _opt_list(key)]
 
 
+RUNTIME_CONFIG_ENV_MAP: dict[str, str] = {
+    "moderation_topic_id": "MODERATION_TOPIC_ID",
+    "invite_link_expire_seconds": "INVITE_LINK_EXPIRE_SECONDS",
+    "events_topic_id": "EVENTS_TOPIC_ID",
+    "workstation_topic_id": "WORKSTATION_TOPIC_ID",
+    "newcomer_topic_id": "NEWCOMER_TOPIC_ID",
+    "digest_topic_id": "DIGEST_TOPIC_ID",
+    "pending_alert_hours": "PENDING_ALERT_HOURS",
+    "failed_auth_topic_id": "FAILED_AUTH_TOPIC_ID",
+    "notify_topic_id": "NOTIFY_TOPIC_ID",
+    "api_poll_interval": "API_POLL_INTERVAL",
+    "workstation_poll_interval": "WORKSTATION_POLL_INTERVAL",
+    "api_down_alert_minutes": "API_DOWN_ALERT_MINUTES",
+    "review_notify_minutes": "REVIEW_NOTIFY_MINUTES",
+    "s21_request_interval_ms": "S21_REQUEST_INTERVAL_MS",
+    "s21_429_backoff_seconds": "S21_429_BACKOFF_SECONDS",
+    "rules_url": "RULES_URL",
+    "platform_base_url": "PLATFORM_BASE_URL",
+    "community_name": "COMMUNITY_NAME",
+    "community_city": "COMMUNITY_CITY",
+    "display_timezone": "DISPLAY_TIMEZONE",
+    "enable_digest": "ENABLE_DIGEST",
+    "enable_workstation": "ENABLE_WORKSTATION",
+    "enable_newcomer": "ENABLE_NEWCOMER",
+    "auto_delete_join_messages": "AUTO_DELETE_JOIN_MESSAGES",
+    "cmd_where_scope": "CMD_WHERE_SCOPE",
+    "cmd_peers_scope": "CMD_PEERS_SCOPE",
+    "cmd_logtime_scope": "CMD_LOGTIME_SCOPE",
+    "cmd_top_scope": "CMD_TOP_SCOPE",
+    "cmd_incampus_scope": "CMD_INCAMPUS_SCOPE",
+    "cmd_events_scope": "CMD_EVENTS_SCOPE",
+    "cmd_profile_scope": "CMD_PROFILE_SCOPE",
+    "support_contacts": "SUPPORT_CONTACTS",
+    "social_trust_project_ids": "SOCIAL_TRUST_PROJECT_IDS",
+}
+
+RUNTIME_CONFIG_KEYS: tuple[str, ...] = tuple(RUNTIME_CONFIG_ENV_MAP.keys())
+RUNTIME_CONFIG_KEY_SET: frozenset[str] = frozenset(RUNTIME_CONFIG_KEYS)
+
+
 @dataclass
 class Config:
     bot_token: str
@@ -109,12 +149,28 @@ def serialize_config(config: Config) -> dict[str, str]:
     return out
 
 
+def serialize_runtime_config(config: Config) -> dict[str, str]:
+    serialized = serialize_config(config)
+    return {key: serialized[key] for key in RUNTIME_CONFIG_KEYS}
+
+
 def _coerce_field(name: str, raw_value: str, current: Config) -> Any:
     base = getattr(current, name)
     int_list_fields = {"review_notify_minutes"}
     int_set_fields = {"social_trust_project_ids", "admin_ids"}
+    scope_fields = {
+        "cmd_where_scope",
+        "cmd_peers_scope",
+        "cmd_logtime_scope",
+        "cmd_top_scope",
+        "cmd_incampus_scope",
+        "cmd_events_scope",
+        "cmd_profile_scope",
+    }
     if isinstance(base, bool):
         return _parse_bool(raw_value)
+    if name in scope_fields:
+        return raw_value.strip().upper()
     if name in int_list_fields:
         return [int(x.strip()) for x in raw_value.split(",") if x.strip()]
     if name in int_set_fields:
@@ -136,7 +192,7 @@ def _coerce_field(name: str, raw_value: str, current: Config) -> Any:
 
 def apply_config_overrides(config: Config, overrides: dict[str, str]) -> None:
     for key, raw_value in overrides.items():
-        if not hasattr(config, key):
+        if key not in RUNTIME_CONFIG_KEY_SET or not hasattr(config, key):
             continue
         try:
             setattr(config, key, _coerce_field(key, raw_value, config))
@@ -145,11 +201,37 @@ def apply_config_overrides(config: Config, overrides: dict[str, str]) -> None:
 
 
 def set_config_value(config: Config, key: str, raw_value: str) -> Any:
-    if not hasattr(config, key):
+    if key not in RUNTIME_CONFIG_KEY_SET or not hasattr(config, key):
         raise KeyError(key)
     parsed = _coerce_field(key, raw_value, config)
     setattr(config, key, parsed)
     return parsed
+
+
+def get_runtime_config_keys() -> tuple[str, ...]:
+    return RUNTIME_CONFIG_KEYS
+
+
+def get_legacy_runtime_overrides(existing_keys: set[str] | frozenset[str] | None = None) -> dict[str, str]:
+    existing = set(existing_keys or ())
+    overrides: dict[str, str] = {}
+
+    for key, env_name in RUNTIME_CONFIG_ENV_MAP.items():
+        if key in existing:
+            continue
+
+        if key == "notify_topic_id":
+            if env_name in os.environ:
+                overrides[key] = os.environ[env_name]
+            elif "FAILED_AUTH_TOPIC_ID" in os.environ:
+                overrides[key] = os.environ["FAILED_AUTH_TOPIC_ID"]
+            continue
+
+        if env_name not in os.environ:
+            continue
+        overrides[key] = os.environ[env_name]
+
+    return overrides
 
 
 def load_config() -> Config:
@@ -157,7 +239,7 @@ def load_config() -> Config:
         bot_token=_require("BOT_TOKEN"),
         admin_ids=_int_list("ADMIN_IDS"),
         moderation_chat_id=_require_int("MODERATION_CHAT_ID"),
-        moderation_topic_id=int(os.environ.get("MODERATION_TOPIC_ID", "0")),
+        moderation_topic_id=0,
         s21_username=_require("S21_API_USERNAME"),
         s21_password=_require("S21_API_PASSWORD"),
         s21_campus_id=_require("S21_CAMPUS_ID"),
@@ -166,42 +248,4 @@ def load_config() -> Config:
         rc_user_id=_require("RC_USER_ID"),
         rc_auth_token=_require("RC_AUTH_TOKEN"),
         db_path=os.environ.get("DB_PATH", "data/bot.db"),
-        invite_link_expire_seconds=int(os.environ.get("INVITE_LINK_EXPIRE_SECONDS", "86400")),
-        events_topic_id=int(os.environ.get("EVENTS_TOPIC_ID", "0")),
-        workstation_topic_id=int(os.environ.get("WORKSTATION_TOPIC_ID", "0")),
-        newcomer_topic_id=int(os.environ.get("NEWCOMER_TOPIC_ID", "0")),
-        digest_topic_id=int(os.environ.get("DIGEST_TOPIC_ID", "0")),
-        pending_alert_hours=int(os.environ.get("PENDING_ALERT_HOURS", "0")),
-        failed_auth_topic_id=int(os.environ.get("FAILED_AUTH_TOPIC_ID", "0")),
-        notify_topic_id=int(
-            os.environ.get("NOTIFY_TOPIC_ID") or
-            os.environ.get("FAILED_AUTH_TOPIC_ID", "0")
-        ),
-        api_poll_interval=int(os.environ.get("API_POLL_INTERVAL", "120")),
-        workstation_poll_interval=_opt_int("WORKSTATION_POLL_INTERVAL"),
-        api_down_alert_minutes=int(os.environ.get("API_DOWN_ALERT_MINUTES", "5")),
-        review_notify_minutes=_opt_int_list("REVIEW_NOTIFY_MINUTES"),
-        s21_request_interval_ms=int(os.environ.get("S21_REQUEST_INTERVAL_MS", "750")),
-        s21_429_backoff_seconds=int(os.environ.get("S21_429_BACKOFF_SECONDS", "15")),
-        rules_url=os.environ.get("RULES_URL", "https://docs.google.com/document/d/1eDYD1tKE7tW7P_8I3k7Bt4F1aknvwed2qweXCcCrFZc/edit?tab=t.0"),
-        platform_base_url=os.environ.get("PLATFORM_BASE_URL", "https://platform.21-school.ru"),
-        community_name=os.environ.get("COMMUNITY_NAME", "Школы 21"),
-        community_city=os.environ.get("COMMUNITY_CITY", "Волгоград"),
-        display_timezone=os.environ.get("DISPLAY_TIMEZONE", "Europe/Moscow"),
-        enable_digest=os.environ.get("ENABLE_DIGEST", "1") not in ("0", "false", "off"),
-        enable_workstation=os.environ.get("ENABLE_WORKSTATION", "1") not in ("0", "false", "off"),
-        enable_newcomer=os.environ.get("ENABLE_NEWCOMER", "1") not in ("0", "false", "off"),
-        auto_delete_join_messages=_parse_bool(os.environ.get("AUTO_DELETE_JOIN_MESSAGES", "0")),
-        cmd_where_scope=os.environ.get("CMD_WHERE_SCOPE", "BOTH").upper(),
-        cmd_peers_scope=os.environ.get("CMD_PEERS_SCOPE", "BOTH").upper(),
-        cmd_logtime_scope=os.environ.get("CMD_LOGTIME_SCOPE", "BOTH").upper(),
-        cmd_top_scope=os.environ.get("CMD_TOP_SCOPE", "PUBLIC").upper(),
-        cmd_incampus_scope=os.environ.get("CMD_INCAMPUS_SCOPE", "PUBLIC").upper(),
-        cmd_events_scope=os.environ.get("CMD_EVENTS_SCOPE", "BOTH").upper(),
-        cmd_profile_scope=os.environ.get("CMD_PROFILE_SCOPE", "PRIVATE").upper(),
-
-        support_contacts=_opt_list("SUPPORT_CONTACTS"),
-        social_trust_project_ids=frozenset(
-            int(x) for x in _opt_list("SOCIAL_TRUST_PROJECT_IDS")
-        ),
     )

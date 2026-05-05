@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from ..config import Config, serialize_config, set_config_value
+from ..config import Config, get_runtime_config_keys, serialize_runtime_config, set_config_value
 from ..db import BotSettingsRepo
 from ..services.join_cleanup import delete_tracked_join_messages
 from ..utils.telegram import safe_callback_answer
@@ -16,7 +16,7 @@ from .admin_common import IsAdminInPrivateChat, IsAdminInPrivateChatCB
 router = Router(name="admin_panel")
 
 _PAGE_SIZE = 8
-_HIDE_VALUE_KEYS = {"bot_token", "s21_password", "rc_auth_token"}
+_RUNTIME_KEYS = get_runtime_config_keys()
 
 
 class AdminSettingsFSM(StatesGroup):
@@ -24,8 +24,6 @@ class AdminSettingsFSM(StatesGroup):
 
 
 def _format_value(key: str, value: object) -> str:
-    if key in _HIDE_VALUE_KEYS:
-        return "********"
     if isinstance(value, bool):
         return "ON" if value else "OFF"
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -53,7 +51,7 @@ def _panel_kb(config: Config) -> InlineKeyboardMarkup:
 
 
 def _settings_kb(config: Config, page: int) -> InlineKeyboardMarkup:
-    keys = list(config.__dataclass_fields__.keys())
+    keys = list(_RUNTIME_KEYS)
     total_pages = max(1, (len(keys) + _PAGE_SIZE - 1) // _PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
     start = page * _PAGE_SIZE
@@ -162,7 +160,7 @@ async def msg_update_setting(message: Message, state: FSMContext, config: Config
         await message.answer(f"❌ Не удалось сохранить <code>{key}</code>: <code>{exc}</code>", parse_mode="HTML")
         return
 
-    serialized = serialize_config(config).get(key, str(parsed))
+    serialized = serialize_runtime_config(config).get(key, str(parsed))
     await BotSettingsRepo.set_value(key, serialized, message.from_user.id if message.from_user else None)
     await state.clear()
     await message.answer(

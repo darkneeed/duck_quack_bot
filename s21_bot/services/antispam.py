@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 
 from aiogram import Bot
@@ -13,9 +14,16 @@ from ..utils.telegram import send_message_with_topic
 
 logger = logging.getLogger(__name__)
 
-_msg_times: dict[int, deque] = defaultdict(lambda: deque())
 
-_warned: set[int] = set()
+@dataclass
+class _SpamState:
+    timestamps: deque[float] = field(default_factory=deque)
+    warning_until: float = 0.0
+    last_event_at: float = 0.0
+    seen_media_groups: dict[str, float] = field(default_factory=dict)
+
+
+_states: dict[tuple[int, int], _SpamState] = defaultdict(_SpamState)
 
 
 async def init_antispam_table() -> None:
@@ -59,6 +67,36 @@ async def set_enabled(enabled: bool) -> None:
         await db.commit()
 
 
+def _prune_state(state: _SpamState, now: float, window: int) -> None:
+    while state.timestamps and now - state.timestamps[0] > window:
+        state.timestamps.popleft()
+
+    state.seen_media_groups = {
+        media_group_id: seen_at
+        for media_group_id, seen_at in state.seen_media_groups.items()
+        if now - seen_at <= window
+    }
+
+    if state.last_event_at and now - state.last_event_at > window:
+        state.timestamps.clear()
+        state.warning_until = 0.0
+
+
+def _register_event(state: _SpamState, message: Message, now: float, window: int) -> bool:
+    _prune_state(state, now, window)
+
+    media_group_id = message.media_group_id
+    if media_group_id:
+        if media_group_id in state.seen_media_groups:
+            state.last_event_at = now
+            return False
+        state.seen_media_groups[media_group_id] = now
+
+    state.timestamps.append(now)
+    state.last_event_at = now
+    return True
+
+
 async def check_message(message: Message, bot: Bot, config: Config) -> bool:
     cfg = await get_config()
     if not cfg["enabled"]:
@@ -74,25 +112,24 @@ async def check_message(message: Message, bot: Bot, config: Config) -> bool:
     if not uid:
         return False
 
+    chat_id = message.chat.id
     now = datetime.now(timezone.utc).timestamp()
     window = cfg["window_secs"]
     threshold = cfg["msg_count"]
     mute_minutes = cfg["mute_minutes"]
 
-    times = _msg_times[uid]
-    times.append(now)
+    state = _states[(chat_id, uid)]
+    if not _register_event(state, message, now, window):
+        return False
 
-    while times and now - times[0] > window:
-        times.popleft()
-
-    count = len(times)
+    count = len(state.timestamps)
 
     if count < threshold:
         return False
 
-    if uid not in _warned:
-        _warned.add(uid)
-        _msg_times[uid].clear()
+    if state.warning_until <= now:
+        state.warning_until = now + window
+        state.timestamps.clear()
         try:
             await message.reply(
                 f"⚠️ <b>Предупреждение!</b> Не флудите — замедлитесь.\n"
@@ -101,13 +138,13 @@ async def check_message(message: Message, bot: Bot, config: Config) -> bool:
             )
         except Exception:
             pass
-        logger.info("Antispam warning: uid=%d count=%d/%d", uid, count, threshold)
+        logger.info("Antispam warning: chat=%d uid=%d count=%d/%d", chat_id, uid, count, threshold)
         return True
 
     until = datetime.now(timezone.utc) + timedelta(minutes=mute_minutes)
     try:
         await bot.restrict_chat_member(
-            chat_id=config.community_chat_id,
+            chat_id=chat_id,
             user_id=uid,
             permissions=ChatPermissions(can_send_messages=False),
             until_date=until,
@@ -116,8 +153,7 @@ async def check_message(message: Message, bot: Bot, config: Config) -> bool:
         logger.error("Antispam mute failed for uid=%d: %s", uid, exc)
         return False
 
-    _warned.discard(uid)
-    _msg_times.pop(uid, None)
+    _states.pop((chat_id, uid), None)
 
     user_name = message.from_user.full_name or str(uid)
     if message.from_user.username:
@@ -142,12 +178,12 @@ async def check_message(message: Message, bot: Bot, config: Config) -> bool:
             text=(
                 f"🔇 <b>Антиспам: мут</b>{pings}\n\n"
                 f"👤 {user_name} (ID: <code>{uid}</code>)\n"
-                f"⏱ На {mute_minutes} мин. за флуд ({count} сообщений за {window}с)"
+                f"⏱ На {mute_minutes} мин. за флуд ({count} событий за {window}с)"
             ),
             parse_mode="HTML",
         )
     except Exception as exc:
         logger.error("Antispam alert failed: %s", exc)
 
-    logger.info("Antispam mute: uid=%d mute=%dmin", uid, mute_minutes)
+    logger.info("Antispam mute: chat=%d uid=%d mute=%dmin", chat_id, uid, mute_minutes)
     return True

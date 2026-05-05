@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from ..services import S21Client
@@ -25,7 +25,6 @@ def _check_scope(chat_type: str, scope: str) -> bool:
     return True  # BOTH
 
 router = Router(name="where")
-router.message.filter(F.chat.type == "private")
 
 
 @router.message(Command("where"))
@@ -74,8 +73,11 @@ async def cmd_where(message: Message, s21: S21Client, config: Config) -> None:
 
 
 @router.message(Command("peers", "пиры", ignore_case=True))
-async def cmd_peers(message: Message, s21: S21Client) -> None:
+async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
     assert message.from_user is not None
+
+    if not _check_scope(message.chat.type, config.cmd_peers_scope):
+        return
 
     caller = await UserRepo.get_by_tg_id(message.from_user.id)
     if not caller or caller["status"] != "approved":
