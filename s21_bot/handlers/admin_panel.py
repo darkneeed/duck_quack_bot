@@ -251,7 +251,7 @@ async def cb_back_to_panel(callback: CallbackQuery, config: Config, state: FSMCo
 @router.callback_query(IsAdminInPrivateChatCB(), F.data.startswith("admin_panel:section:"))
 async def cb_open_section(callback: CallbackQuery, config: Config, state: FSMContext) -> None:
     await state.clear()
-    _, _, _, section, page_raw = callback.data.split(":")
+    _, _, section, page_raw = callback.data.split(":", 3)
     page = int(page_raw)
     await callback.message.edit_text(
         _section_text(config, section, page),
