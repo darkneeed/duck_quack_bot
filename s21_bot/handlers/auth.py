@@ -86,7 +86,7 @@ async def _send_failed_auth_alert(
         logger.error("Failed to send auth alert: %s", exc)
 
 
-async def _check_and_respond(message: Message, state: FSMContext) -> bool:
+async def _check_and_respond(message: Message, state: FSMContext, config: Config) -> bool:
     assert message.from_user is not None
     user = await UserRepo.get_by_tg_id(message.from_user.id)
     await UserRepo.upsert_basic(message.from_user.id, tg_display_name(message.from_user))
@@ -129,7 +129,7 @@ async def _start_flow(message: Message, state: FSMContext, config: Config) -> No
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext, config: Config) -> None:
     await state.clear()
-    if await _check_and_respond(message, state):
+    if await _check_and_respond(message, state, config):
         return
     await _start_flow(message, state, config)
 
@@ -644,6 +644,6 @@ async def _submit_application(
 async def fallback(message: Message, state: FSMContext, config: Config) -> None:
     if await state.get_state() is not None:
         return
-    if await _check_and_respond(message, state):
+    if await _check_and_respond(message, state, config):
         return
     await _start_flow(message, state, config)
