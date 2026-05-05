@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import io
 import logging
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 from ..keyboards import cabinet_back_kb, cabinet_home_kb
 from ..config import Config
@@ -113,6 +114,21 @@ async def cb_cabinet_profile(callback: CallbackQuery, s21: S21Client, config: Co
     )
 
 
+def _build_qr_image(data: str):
+    try:
+        import qrcode  # type: ignore[import]
+    except ImportError:
+        return None
+    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=12, border=4)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="#00e640")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    buf.seek(0)
+    return buf
+
+
 @router.callback_query(F.data == "cabinet:home")
 async def cb_cabinet_home(callback: CallbackQuery, config: Config) -> None:
     assert callback.from_user is not None
@@ -143,6 +159,12 @@ async def cb_cabinet_gencode(callback: CallbackQuery, bot: Bot, config: Config) 
         link = build_bot_link(code, bot_info.username or "")
         text = INVITE_GENCODE_CAPTION.format(link=f"<code>{link}</code>")
         await _edit_cabinet_card(callback, text, config, disable_web_page_preview=True)
+        qr_buf = _build_qr_image(link)
+        if qr_buf:
+            await callback.message.answer_photo(
+                photo=BufferedInputFile(qr_buf.read(), filename=f"invite_{code}.png"),
+                caption="QR-код для быстрого открытия инвайта",
+            )
     except Exception as exc:
         await _edit_cabinet_card(callback, CABINET_GENCODE_ERROR.format(error=exc), config, disable_web_page_preview=False)
 
