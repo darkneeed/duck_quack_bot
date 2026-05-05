@@ -99,7 +99,7 @@ def verification_result_kb(result: str, voter_name: str = "") -> InlineKeyboardM
 from ..strings import CABINET_BTN_PROFILE, CABINET_BTN_GENCODE, CABINET_BTN_MYCODES, CABINET_BTN_HELP  # noqa: E402
 
 
-def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
+def cabinet_home_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu for approved users."""
     builder = InlineKeyboardBuilder()
     builder.button(text=CABINET_BTN_PROFILE, callback_data="cabinet:profile")
@@ -110,3 +110,15 @@ def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
         builder.button(text="🛠 Админ-панель", callback_data="cabinet:admin_panel")
     builder.adjust(1)
     return builder.as_markup()
+
+
+def cabinet_back_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="cabinet:home"))
+    if is_admin:
+        builder.row(InlineKeyboardButton(text="🛠 Админ-панель", callback_data="cabinet:admin_panel"))
+    return builder.as_markup()
+
+
+def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
+    return cabinet_home_kb(is_admin=is_admin)

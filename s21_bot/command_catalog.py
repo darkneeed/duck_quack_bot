@@ -320,6 +320,26 @@ ROLE_LABELS: dict[str, str] = {
 }
 
 
+def _has_cyrillic(text: str) -> bool:
+    return any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in text)
+
+
+def _preferred_command(spec: CommandSpec) -> str:
+    for alias in spec.aliases:
+        if _has_cyrillic(alias):
+            return alias
+    return spec.command
+
+
+def _display_aliases(spec: CommandSpec) -> tuple[str, ...]:
+    preferred = _preferred_command(spec)
+    aliases: list[str] = []
+    if preferred != spec.command:
+        aliases.append(spec.command)
+    aliases.extend(alias for alias in spec.aliases if alias != preferred)
+    return tuple(aliases)
+
+
 def _scope_allows(scope: str, chat_type: str) -> bool:
     is_private = chat_type == "private"
     if scope == "PRIVATE":
@@ -356,7 +376,12 @@ def render_approved_short_help(config: Config) -> str:
     commands = get_visible_commands(config, role="approved", chat_type="private")
     lines = ["💡 <b>Что можно сделать дальше</b>\n"]
     for spec in commands[:6]:
-        lines.append(f"<code>{html.escape(spec.command)}</code> — {spec.description}")
+        primary = _preferred_command(spec)
+        aliases = _display_aliases(spec)
+        suffix = ""
+        if aliases:
+            suffix = " <i>(алиас: " + ", ".join(f"<code>{html.escape(alias)}</code>" for alias in aliases) + ")</i>"
+        lines.append(f"<code>{html.escape(primary)}</code> — {spec.description}{suffix}")
     return "\n".join(lines)
 
 
@@ -364,9 +389,12 @@ def render_cabinet_help(config: Config) -> str:
     commands = get_visible_commands(config, role="approved", chat_type="private")
     lines = ["📖 <b>Команды, доступные здесь</b>\n"]
     for spec in commands:
-        lines.append(f"<code>{html.escape(spec.command)}</code> — {spec.description}")
-        for alias in spec.aliases:
-            lines.append(f"<code>{html.escape(alias)}</code> — то же самое")
+        primary = _preferred_command(spec)
+        aliases = _display_aliases(spec)
+        suffix = ""
+        if aliases:
+            suffix = " <i>(алиасы: " + ", ".join(f"<code>{html.escape(alias)}</code>" for alias in aliases) + ")</i>"
+        lines.append(f"<code>{html.escape(primary)}</code> — {spec.description}{suffix}")
     return "\n".join(lines)
 
 
@@ -405,10 +433,12 @@ def render_commands_markdown() -> str:
         lines.append("| Команда | Алиасы | Кому | Описание | Где работает |")
         lines.append("|---------|--------|------|----------|--------------|")
         for spec in specs:
+            primary = _preferred_command(spec)
+            aliases = _display_aliases(spec)
             lines.append(
                 "| "
-                f"`{spec.command}` | "
-                f"{_aliases_text(f'`{alias}`' for alias in spec.aliases)} | "
+                f"`{primary}` | "
+                f"{_aliases_text(f'`{alias}`' for alias in aliases)} | "
                 f"{ROLE_LABELS[spec.role]} | "
                 f"{spec.description} | "
                 f"{_availability_text(spec)} |"
