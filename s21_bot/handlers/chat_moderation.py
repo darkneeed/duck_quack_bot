@@ -8,6 +8,7 @@ from aiogram.filters import Command, BaseFilter
 from aiogram.types import Message, ChatPermissions
 
 from ..config import Config
+from ..strings import tg_mention
 
 
 from ..db.moderator_repo import ModeratorRepo
@@ -434,14 +435,18 @@ async def cmd_top(message: Message, config: Config) -> None:
 
     medals = ["🥇", "🥈", "🥉"] + ["4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
 
-    login_to_tgid = {u["school_login"]: u["tg_id"] for u in approved if u["school_login"]}
+    login_to_user = {u["school_login"]: u for u in approved if u["school_login"]}
 
     def fmt_row(i: int, login: str, xp: int, level: int, coalition: str) -> str:
         medal  = medals[i] if i < len(medals) else f"{i+1}."
         xp_str = f"{xp:,}".replace(",", " ")
         tribe  = f" · {coalition}" if coalition else ""
-        tg_id  = login_to_tgid.get(login)
-        name   = f"<a href='tg://user?id={tg_id}'>{login}</a>" if tg_id else f"<code>{login}</code>"
+        user   = login_to_user.get(login)
+        name   = tg_mention(
+            user["tg_id"] if user else None,
+            login,
+            tg_username=user["tg_username"] if user else None,
+        )
         return f"{medal} {name}{tribe} — {xp_str} XP (ур. {level})"
 
     lines = [f"🏆 <b>Топ-10 из {len(scores)}</b>\n"]

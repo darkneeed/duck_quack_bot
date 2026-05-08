@@ -1,3 +1,5 @@
+import html
+
 # ════════════════════════════════════════════════════════════════
 # ОБЩИЕ
 # ════════════════════════════════════════════════════════════════
@@ -368,9 +370,16 @@ ADMIN_BTN_SKIP          = "Пропущено."
 # HELPERS
 # ════════════════════════════════════════════════════════════════
 
-def tg_mention(tg_id: int, display: str) -> str:
-    """Returns HTML link that mentions user by tg_id."""
-    return f"<a href='tg://user?id={tg_id}'>{display}</a>"
+def tg_mention(tg_id: int | None, display: str, tg_username: str | None = None) -> str:
+    """Returns HTML link for a Telegram user, preferring public username when available."""
+    safe_display = html.escape(display)
+    username = (tg_username or "").strip().lstrip("@")
+    if username:
+        safe_username = html.escape(username, quote=True)
+        return f"<a href='https://t.me/{safe_username}'>{safe_display}</a>"
+    if tg_id:
+        return f"<a href='tg://user?id={tg_id}'>{safe_display}</a>"
+    return f"<code>{safe_display}</code>"
 
 
 # ════════════════════════════════════════════════════════════════
