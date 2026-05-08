@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -12,6 +13,7 @@ from ..db import ApplicationRepo, UserRepo
 from ..db.workstation_state_repo import WorkstationStateRepo
 from ..db.s21_cache_repo import S21CacheRepo
 from ..keyboards import decided_kb, cooldown_with_reason_kb, reject_reason_input_kb
+from ..services import S21Client, refresh_user_cache
 from ..utils import now_iso
 from ..utils.branding import format_invite_message
 from ..utils.telegram import safe_callback_answer, send_message_with_topic
@@ -24,6 +26,13 @@ from ..strings import (
 
 logger = logging.getLogger(__name__)
 router = Router(name="moderation")
+
+
+async def _warm_profile_cache(login: str, s21: S21Client) -> None:
+    try:
+        await refresh_user_cache(login, s21)
+    except Exception as exc:
+        logger.warning("Failed to warm cache for %s after approve: %s", login, exc)
 
 
 class ModerationFSM(StatesGroup):
@@ -60,7 +69,7 @@ async def _alert_error(bot: Bot, config: Config, text: str) -> None:
 
 
 @router.callback_query(IsModerator(), F.data.startswith("approve:"))
-async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config) -> None:
+async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config, s21: S21Client) -> None:
     app_id = int(callback.data.split(":")[1])
     app = await ApplicationRepo.get(app_id)
     if app is None:
@@ -95,6 +104,8 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config) -> None:
         coalition=app["coalition"] if "coalition" in app.keys() else None,
         invite_link=invite_link, decision_date=now,
     )
+    if app["school_login"]:
+        asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
 
     try:
         await bot.send_message(

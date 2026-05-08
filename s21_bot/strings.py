@@ -308,7 +308,7 @@ WHERE_ERROR         = "⚠️ Не удалось получить данные 
 # ════════════════════════════════════════════════════════════════
 
 NEWCOMER_HEADER         = "👋 Новый участник!\n"
-NEWCOMER_LOGIN          = "🔑 <b>Логин:</b> <code>{login}</code>"    # {login}
+NEWCOMER_LOGIN          = "🔑 <b>Логин:</b> <a href='{url}'>{login}</a>"    # {login}, {url}
 NEWCOMER_TG_ID          = "🆔 <b>ID:</b> <code>{tg_id}</code>"       # {tg_id}
 NEWCOMER_TG_NAME        = "👤 <b>Имя:</b> {tg_name}"                 # {tg_name}
 NEWCOMER_COALITION      = "⭐️ <b>Трайб:</b> {coalition}"             # {coalition}
@@ -371,12 +371,12 @@ ADMIN_BTN_SKIP          = "Пропущено."
 # ════════════════════════════════════════════════════════════════
 
 def tg_mention(tg_id: int | None, display: str, tg_username: str | None = None) -> str:
-    """Returns HTML link for a Telegram user, preferring public username when available."""
+    """Returns HTML link for a Telegram user, preferring username without web previews."""
     safe_display = html.escape(display)
     username = (tg_username or "").strip().lstrip("@")
     if username:
         safe_username = html.escape(username, quote=True)
-        return f"<a href='https://t.me/{safe_username}'>{safe_display}</a>"
+        return f"<a href='tg://resolve?domain={safe_username}'>{safe_display}</a>"
     if tg_id:
         return f"<a href='tg://user?id={tg_id}'>{safe_display}</a>"
     return f"<code>{safe_display}</code>"

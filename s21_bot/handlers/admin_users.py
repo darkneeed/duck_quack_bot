@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from aiogram import Bot, Router
@@ -11,13 +12,20 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from ..command_catalog import render_approved_short_help
 from ..config import Config
 from ..db import ApplicationRepo, AuthAttemptRepo, UserRepo
-from ..services import S21Client
+from ..services import S21Client, refresh_user_cache
 from ..utils.branding import format_invite_message
 from ..utils.helpers import now_iso
 from .admin_common import IsModeratorInModChat
 
 logger = logging.getLogger(__name__)
 router = Router(name="admin_users")
+
+
+async def _warm_profile_cache(login: str, s21: S21Client) -> None:
+    try:
+        await refresh_user_cache(login, s21)
+    except Exception as exc:
+        logger.warning("Failed to warm cache for %s after approve: %s", login, exc)
 
 
 @router.message(IsModeratorInModChat(), Command("ban"))
@@ -182,7 +190,7 @@ async def cmd_history(message: Message) -> None:
 
 
 @router.message(IsModeratorInModChat(), Command("approve"))
-async def cmd_approve(message: Message, bot: Bot, config: Config) -> None:
+async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client) -> None:
     assert message.from_user is not None
     parts = (message.text or "").split()
     if len(parts) != 2 or not parts[1].isdigit():
@@ -232,6 +240,8 @@ async def cmd_approve(message: Message, bot: Bot, config: Config) -> None:
         invite_link=invite_link,
         decision_date=now,
     )
+    if app["school_login"]:
+        asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
 
     try:
         await bot.send_message(chat_id=app["tg_id"], text=format_invite_message(invite_link, config))

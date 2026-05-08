@@ -165,7 +165,7 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
 
     if config.newcomer_topic_id and login:
         lines = [NEWCOMER_HEADER]
-        lines.append(NEWCOMER_LOGIN.format(login=login))
+        lines.append(NEWCOMER_LOGIN.format(login=login, url=build_profile_url(login, config)))
         lines.append(NEWCOMER_TG_ID.format(tg_id=member.id))
         lines.append(NEWCOMER_TG_NAME.format(tg_name=user["tg_name"]))
         if coalition:

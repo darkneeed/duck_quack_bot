@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.types import Message
 from ..services import S21Client
 from ..services.cache_poller import get_or_refresh
+from ..db.s21_cache_repo import S21CacheRepo
 from ..config import Config
 from ..db import UserRepo
 from ..strings import (
@@ -244,10 +245,10 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
         if not login:
             continue
         try:
-            all_projects: list[dict] = []
-            for status in ("IN_PROGRESS", "IN_REVIEWS", "REGISTERED"):
-                projects = await s21.get_projects(login, status=status, limit=20)
-                all_projects.extend(projects)
+            profile = await S21CacheRepo.get(login)
+            all_projects = list((profile or {}).get("active_projects") or [])
+            if not all_projects:
+                all_projects = await s21.get_active_projects(login)
             best_project, best_score = _find_best_project_match(query, all_projects)
             if best_project and best_score >= 0.65:
                 matches.append((login, tg_id_u, tg_username_u, best_project, best_score))
@@ -268,6 +269,7 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
     await message.answer(
         f"👥 <b>Работают над «{best_match_name}»</b> — {len(matches)}\n\n{logins_str}",
         parse_mode="HTML",
+        disable_web_page_preview=True,
     )
 
 
