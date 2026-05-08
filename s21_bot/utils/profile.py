@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 from ..strings import (
     PEER_CARD_COMMENT,
@@ -14,7 +15,6 @@ from ..strings import (
     PEER_CARD_PENDING_PHOTO,
     PEER_CARD_PHOTO_NO,
     PEER_CARD_PHOTO_YES,
-    PEER_CARD_PREVIEW_HEADER,
     PEER_CARD_SECTION_HEADER,
     PEER_CARD_SUBMISSION_COMMENT,
     PEER_CARD_SUBMISSION_COMMENT_TITLE,
@@ -51,6 +51,9 @@ _CONTACT_LABELS = {
     "rocket": "Rocket.Chat",
 }
 
+_PHOTO_CAPTION_LIMIT = 1024
+_PHOTO_CAPTION_SUFFIX = "\n\n<i>Профиль сокращен из-за лимита подписи Telegram.</i>"
+
 
 def normalize_preferred_contact(value: str | None) -> str:
     if value in _CONTACT_LABELS:
@@ -58,7 +61,13 @@ def normalize_preferred_contact(value: str | None) -> str:
     return "tg"
 
 
-def _build_school_profile_lines(login: str, profile: dict, profile_url: str) -> list[str]:
+def _build_school_profile_lines(
+    login: str,
+    profile: dict,
+    profile_url: str,
+    *,
+    show_coins: bool = True,
+) -> list[str]:
     info = profile.get("info") or {}
     coalition = profile.get("coalition") or {}
     points = profile.get("points") or {}
@@ -93,8 +102,9 @@ def _build_school_profile_lines(login: str, profile: dict, profile_url: str) -> 
         "",
         PROFILE_PEER_PTS.format(pts=peer_pts),
         PROFILE_CODE_PTS.format(pts=code_pts),
-        PROFILE_COINS.format(coins=coins),
     ]
+    if show_coins:
+        lines.append(PROFILE_COINS.format(coins=coins))
 
     if projects:
         lines.append("")
@@ -114,8 +124,16 @@ def _build_school_profile_lines(login: str, profile: dict, profile_url: str) -> 
     return lines
 
 
-def render_profile_text(login: str, profile: dict, profile_url: str) -> str:
-    return "\n".join(_build_school_profile_lines(login, profile, profile_url))
+def render_profile_text(
+    login: str,
+    profile: dict,
+    profile_url: str,
+    *,
+    show_coins: bool = True,
+) -> str:
+    return "\n".join(
+        _build_school_profile_lines(login, profile, profile_url, show_coins=show_coins)
+    )
 
 
 def _format_telegram_value(user) -> str:
@@ -126,7 +144,7 @@ def _format_telegram_value(user) -> str:
 
 
 def _format_rocket_value(user) -> str:
-    rocket_username = (user["rocket_username"] or "").strip()
+    rocket_username = (user["rocket_username"] or user["school_login"] or "").strip()
     if rocket_username:
         return f"<code>{html.escape(rocket_username)}</code>"
     return PEER_CARD_CONTACT_NONE
@@ -167,9 +185,8 @@ def render_peer_card_text(user) -> str:
 
 def render_peer_card_editor_text(login: str, profile: dict, profile_url: str, user) -> str:
     has_photo = bool(user["profile_photo_file_id"])
-    lines = _build_school_profile_lines(login, profile, profile_url)
+    lines = _build_school_profile_lines(login, profile, profile_url, show_coins=True)
     lines.append("")
-    lines.append(PEER_CARD_PREVIEW_HEADER)
     lines.append("")
     lines.extend(_build_peer_card_lines(user))
     lines.append("")
@@ -181,11 +198,45 @@ def render_peer_card_editor_text(login: str, profile: dict, profile_url: str, us
     return "\n".join(lines)
 
 
-def render_full_peer_card_text(login: str, profile: dict, profile_url: str, user) -> str:
-    lines = _build_school_profile_lines(login, profile, profile_url)
+def render_full_peer_card_text(
+    login: str,
+    profile: dict,
+    profile_url: str,
+    user,
+    *,
+    show_coins: bool = False,
+) -> str:
+    lines = _build_school_profile_lines(login, profile, profile_url, show_coins=show_coins)
     lines.append("")
     lines.extend(render_peer_card_text(user).splitlines())
     return "\n".join(lines)
+
+
+def fit_text_for_photo_caption(text: str, *, limit: int = _PHOTO_CAPTION_LIMIT) -> str:
+    if len(text) <= limit:
+        return text
+
+    lines = text.splitlines()
+    kept: list[str] = []
+    for line in lines:
+        candidate = "\n".join([*kept, line]).rstrip()
+        if len(candidate) + len(_PHOTO_CAPTION_SUFFIX) > limit:
+            break
+        kept.append(line)
+
+    if not kept:
+        plain = re.sub(r"<[^>]+>", "", text)
+        truncated = plain[: max(0, limit - len(_PHOTO_CAPTION_SUFFIX) - 1)].rstrip()
+        return f"{html.escape(truncated)}…{_PHOTO_CAPTION_SUFFIX}"
+
+    body = "\n".join(kept).rstrip()
+    if body == text:
+        return body
+    return f"{body}{_PHOTO_CAPTION_SUFFIX}"
+
+
+def can_send_text_as_photo_caption(text: str, *, limit: int = _PHOTO_CAPTION_LIMIT) -> bool:
+    return len(text) <= limit
 
 
 def build_profile_card_submission_text(user, submission_type: str) -> str:

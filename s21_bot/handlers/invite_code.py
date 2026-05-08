@@ -9,7 +9,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from ..config import Config
-from ..db import ApplicationRepo
 from ..db.invite_code_repo import InviteCodeRepo
 import io
 
@@ -56,41 +55,6 @@ async def cmd_start_with_code(message: Message, state: FSMContext) -> None:
         await message.answer(
             VALIDATION_MESSAGES.get(result, INVITE_INVALID) +
             "\n\nВы можете продолжить оформление заявки без кода.",
-            parse_mode="HTML",
-        )
-
-
-@router.message(F.chat.type == "private", Command("invite"))
-async def cmd_invite(message: Message, state: FSMContext) -> None:
-    assert message.from_user is not None
-    parts = (message.text or "").split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        await message.answer(
-            "Использование: <code>/invite КОД</code>\n"
-            "Например: <code>/invite A3F7C21B</code>",
-            parse_mode="HTML",
-        )
-        return
-
-    code = parts[1].strip().upper()
-    tg_id = message.from_user.id
-
-    app = await ApplicationRepo.get_pending_for_user(tg_id)
-    if app is not None:
-        result = await attach_invite_code_to_request(app["id"], code, tg_id)
-        await _reply_attach_result(message, result, code, app["id"])
-        return
-
-    result, _ = await validate_invite_code(code, tg_id)
-    if result == ValidationResult.OK:
-        await state.update_data(**{_PENDING_CODE_KEY: code})
-        await message.answer(
-            INVITE_NO_APP_STORED.format(code=code),
-            parse_mode="HTML",
-        )
-    else:
-        await message.answer(
-            VALIDATION_MESSAGES.get(result, "❌ Недействительный код."),
             parse_mode="HTML",
         )
 

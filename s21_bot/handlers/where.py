@@ -1,5 +1,7 @@
 from __future__ import annotations
+import difflib
 import logging
+import re
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
@@ -14,9 +16,75 @@ from ..strings import (
     PEER_CARD_NOT_FOUND, PEER_CARD_USAGE,
 )
 from ..utils.branding import build_profile_url
-from ..utils.profile import render_full_peer_card_text
+from ..utils.profile import (
+    can_send_text_as_photo_caption,
+    fit_text_for_photo_caption,
+    render_full_peer_card_text,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_project_text(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _iter_project_candidates(project: dict) -> tuple[str, ...]:
+    candidates: list[str] = []
+    for key in ("title", "name", "code", "slug", "kind", "id"):
+        value = project.get(key)
+        if value:
+            candidates.append(str(value))
+    return tuple(dict.fromkeys(candidates))
+
+
+def _project_match_score(query: str, project: dict) -> float:
+    query_norm = _normalize_project_text(query)
+    if not query_norm:
+        return 0.0
+
+    best = 0.0
+    for candidate in _iter_project_candidates(project):
+        candidate_lower = candidate.lower()
+        candidate_norm = _normalize_project_text(candidate)
+        if not candidate_norm:
+            continue
+        if query_norm == candidate_norm:
+            return 1.0
+        if query_norm in candidate_norm or candidate_norm in query_norm:
+            best = max(best, 0.95)
+            continue
+
+        tokens = [token for token in re.split(r"[^a-z0-9]+", candidate_lower) if token]
+        if any(query_norm in _normalize_project_text(token) for token in tokens):
+            best = max(best, 0.9)
+            continue
+
+        best = max(best, difflib.SequenceMatcher(None, query_norm, candidate_norm).ratio())
+    return best
+
+
+def _find_best_project_match(query: str, projects: list[dict]) -> tuple[dict | None, float]:
+    best_project: dict | None = None
+    best_score = 0.0
+    for project in projects:
+        score = _project_match_score(query, project)
+        if score > best_score:
+            best_project = project
+            best_score = score
+    return best_project, best_score
+
+
+def _project_display_name(project: dict | None, fallback: str) -> str:
+    if not project:
+        return fallback
+    return str(
+        project.get("title")
+        or project.get("name")
+        or project.get("code")
+        or project.get("slug")
+        or fallback
+    )
 
 
 def _check_scope(chat_type: str, scope: str) -> bool:
@@ -108,16 +176,29 @@ async def cmd_peer_card(message: Message, s21: S21Client, config: Config) -> Non
         await message.answer(PROFILE_ERROR.format(error=exc), parse_mode="HTML")
         return
 
-    card_text = render_full_peer_card_text(login, profile, build_profile_url(login, config), user)
+    card_text = render_full_peer_card_text(
+        login,
+        profile,
+        build_profile_url(login, config),
+        user,
+        show_coins=caller["tg_id"] == user["tg_id"],
+    )
     if user["profile_photo_file_id"]:
-        await message.answer_photo(
-            photo=user["profile_photo_file_id"],
-        )
-        await message.answer(
-            card_text,
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-        )
+        if can_send_text_as_photo_caption(card_text):
+            await message.answer_photo(
+                photo=user["profile_photo_file_id"],
+                caption=fit_text_for_photo_caption(card_text),
+                parse_mode="HTML",
+            )
+        else:
+            await message.answer_photo(
+                photo=user["profile_photo_file_id"],
+            )
+            await message.answer(
+                card_text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
         return
 
     await message.answer(
@@ -142,8 +223,8 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
         await message.answer(
-            "Использование: <code>/peers &lt;название проекта&gt;</code>\n"
-            "Например: <code>/peers C2_SimpleBashUtils</code>",
+            "Использование: <code>/peers &lt;проект или код&gt;</code>\n"
+            "Например: <code>/peers DSB7</code> или <code>/peers Pandas</code>",
             parse_mode="HTML",
         )
         return
@@ -153,7 +234,7 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
 
     from ..db import UserRepo as _UR
     approved = await _UR.get_approved_users()
-    matches: list[tuple[str, int]] = []  # (login, tg_id)
+    matches: list[tuple[str, int, dict, float]] = []  # (login, tg_id, project, score)
 
     for user in approved:
         login = user["school_login"]
@@ -161,17 +242,13 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
         if not login:
             continue
         try:
-            found = False
+            all_projects: list[dict] = []
             for status in ("IN_PROGRESS", "IN_REVIEWS", "REGISTERED"):
-                if found:
-                    break
                 projects = await s21.get_projects(login, status=status, limit=20)
-                for p in projects:
-                    title = p.get("title") or ""
-                    if query in title.lower() or query in str(p.get("id", "")):
-                        matches.append((login, tg_id_u))
-                        found = True
-                        break
+                all_projects.extend(projects)
+            best_project, best_score = _find_best_project_match(query, all_projects)
+            if best_project and best_score >= 0.65:
+                matches.append((login, tg_id_u, best_project, best_score))
         except Exception:
             continue
 
@@ -182,11 +259,12 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
         return
 
     mentions = []
-    for login, tg_id_m in sorted(matches, key=lambda x: x[0]):
+    best_match_name = _project_display_name(max(matches, key=lambda item: item[3])[2], query)
+    for login, tg_id_m, _, _ in sorted(matches, key=lambda item: item[0]):
         mentions.append(f"<a href='tg://user?id={tg_id_m}'>{login}</a>")
     logins_str = ", ".join(mentions)
     await message.answer(
-        f"👥 <b>Работают над «{query}»</b> — {len(matches)}\n\n{logins_str}",
+        f"👥 <b>Работают над «{best_match_name}»</b> — {len(matches)}\n\n{logins_str}",
         parse_mode="HTML",
     )
 

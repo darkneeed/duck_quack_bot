@@ -29,14 +29,6 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         available_in_private=True,
     ),
     CommandSpec(
-        command="/invite <код>",
-        aliases=(),
-        description="применить инвайт-код к текущей заявке",
-        role="approved",
-        group="private",
-        available_in_private=True,
-    ),
-    CommandSpec(
         command="/changetg",
         aliases=(),
         description="подсказка по смене Telegram-аккаунта",
@@ -329,6 +321,8 @@ ROLE_LABELS: dict[str, str] = {
     "admin": "Админ",
 }
 
+_HIDDEN_FROM_APPROVED_HELP = {"/profile"}
+
 
 def _has_cyrillic(text: str) -> bool:
     return any("а" <= ch.lower() <= "я" or ch.lower() == "ё" for ch in text)
@@ -383,7 +377,11 @@ def get_visible_commands(
 
 
 def render_approved_short_help(config: Config) -> str:
-    commands = get_visible_commands(config, role="approved", chat_type="private")
+    commands = [
+        spec
+        for spec in get_visible_commands(config, role="approved", chat_type="private")
+        if spec.command not in _HIDDEN_FROM_APPROVED_HELP
+    ]
     lines = ["💡 <b>Что можно сделать дальше</b>\n"]
     for spec in commands[:6]:
         primary = _preferred_command(spec)
@@ -396,7 +394,11 @@ def render_approved_short_help(config: Config) -> str:
 
 
 def render_cabinet_help(config: Config) -> str:
-    commands = get_visible_commands(config, role="approved", chat_type="private")
+    commands = [
+        spec
+        for spec in get_visible_commands(config, role="approved", chat_type="private")
+        if spec.command not in _HIDDEN_FROM_APPROVED_HELP
+    ]
     lines = ["📖 <b>Команды, доступные здесь</b>\n"]
     for spec in commands:
         primary = _preferred_command(spec)

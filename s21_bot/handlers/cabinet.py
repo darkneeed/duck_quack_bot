@@ -48,6 +48,8 @@ from ..strings import (
 from ..utils.branding import build_profile_url
 from ..utils.profile import (
     build_profile_card_submission_text,
+    can_send_text_as_photo_caption,
+    fit_text_for_photo_caption,
     normalize_preferred_contact,
     render_peer_card_editor_text,
 )
@@ -87,12 +89,13 @@ async def _edit_cabinet_card(
     disable_web_page_preview: bool = True,
 ) -> None:
     assert callback.from_user is not None
-    await callback.message.edit_text(
+    await callback.message.answer(
         text,
         parse_mode="HTML",
         disable_web_page_preview=disable_web_page_preview,
         reply_markup=cabinet_back_kb(is_admin=_is_admin(callback.from_user.id, config)),
     )
+    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 def _profile_card_keyboard(user) -> object:
@@ -118,20 +121,50 @@ async def _build_cabinet_profile_text(user, s21: S21Client, config: Config) -> s
     )
 
 
-async def _refresh_profile_message(
+async def _replace_with_profile_card(
     message: Message,
     user,
     s21: S21Client,
     config: Config,
 ) -> Message:
     text = await _build_cabinet_profile_text(user, s21, config)
-    await message.edit_text(
-        text,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=_profile_card_keyboard(user),
-    )
-    return message
+    reply_markup = _profile_card_keyboard(user)
+    if user["profile_photo_file_id"]:
+        if can_send_text_as_photo_caption(text):
+            sent = await message.answer_photo(
+                photo=user["profile_photo_file_id"],
+                caption=fit_text_for_photo_caption(text),
+                parse_mode="HTML",
+                reply_markup=reply_markup,
+            )
+        else:
+            await message.answer_photo(
+                photo=user["profile_photo_file_id"],
+            )
+            sent = await message.answer(
+                text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=reply_markup,
+            )
+    else:
+        sent = await message.answer(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+    await _delete_message_safe(message.bot, message.chat.id, message.message_id)
+    return sent
+
+
+async def _refresh_profile_message(
+    message: Message,
+    user,
+    s21: S21Client,
+    config: Config,
+) -> Message:
+    return await _replace_with_profile_card(message, user, s21, config)
 
 
 async def _show_profile_card_prompt(
@@ -199,12 +232,7 @@ async def _restore_profile_card_after_input(
 
     user = await UserRepo.get_by_tg_id(user_id)
     if user and user["status"] == "approved":
-        await source_message.answer(
-            await _build_cabinet_profile_text(user, s21, config),
-            parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=_profile_card_keyboard(user),
-        )
+        await _replace_with_profile_card(source_message, user, s21, config)
 
     await state.clear()
 
@@ -218,12 +246,13 @@ async def _require_approved_user(tg_id: int):
 
 async def _render_contact_picker(callback: CallbackQuery, user) -> None:
     selected = normalize_preferred_contact(user["preferred_contact"])
-    await callback.message.edit_text(
+    await callback.message.answer(
         PEER_CARD_CONTACT_PROMPT,
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=cabinet_profile_card_contact_kb(selected=selected),
     )
+    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 def _is_valid_max_profile_url(raw_url: str) -> bool:
@@ -314,12 +343,7 @@ async def cb_cabinet_profile(callback: CallbackQuery, s21: S21Client, config: Co
         await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
         return
     await safe_callback_answer(callback)
-    await callback.message.edit_text(
-        await _build_cabinet_profile_text(user, s21, config),
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=_profile_card_keyboard(user),
-    )
+    await _replace_with_profile_card(callback.message, user, s21, config)
 
 
 @router.callback_query(F.data == "cabinet:card_open")
@@ -505,11 +529,12 @@ async def cb_cabinet_home(callback: CallbackQuery, config: Config) -> None:
         await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
         return
     await safe_callback_answer(callback)
-    await callback.message.edit_text(
+    await callback.message.answer(
         _cabinet_home_text(user["school_login"]),
         parse_mode="HTML",
         reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
     )
+    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 @router.callback_query(F.data == "cabinet:gencode")
