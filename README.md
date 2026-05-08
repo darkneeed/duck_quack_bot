@@ -8,28 +8,13 @@
 - После одобрения пользователь получает уникальную одноразовую ссылку
 - Банлист: заблокированные пользователи не могут взаимодействовать с ботом
 
-## Развёртывание
-
-### Через Docker Compose (рекомендуется)
+### Развёртывание
 
 ```bash
-cd /opt/
 git clone https://github.com/darkneeed/duck_quack_bot.git
 cd duck_quack_bot
-cp .env.example .env
-# Заполните .env
+cp .env.example .env # Заполните переменные
 docker compose up -d
-```
-
-### Локально
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-# Заполните .env
-python -m s21_bot.main
 ```
 
 ## Конфигурация
