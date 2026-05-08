@@ -1,4 +1,5 @@
 import html
+import re
 
 # ════════════════════════════════════════════════════════════════
 # ОБЩИЕ
@@ -370,10 +371,25 @@ ADMIN_BTN_SKIP          = "Пропущено."
 # HELPERS
 # ════════════════════════════════════════════════════════════════
 
-def tg_mention(tg_id: int | None, display: str, tg_username: str | None = None) -> str:
+def _extract_tg_username(tg_username: str | None, tg_name: str | None = None) -> str:
+    username = (tg_username or "").strip().lstrip("@")
+    if username:
+        return username
+    match = re.search(r"\(@([A-Za-z0-9_]{5,})\)", tg_name or "")
+    if match:
+        return match.group(1)
+    return ""
+
+
+def tg_mention(
+    tg_id: int | None,
+    display: str,
+    tg_username: str | None = None,
+    tg_name: str | None = None,
+) -> str:
     """Returns HTML link for a Telegram user, preferring username without web previews."""
     safe_display = html.escape(display)
-    username = (tg_username or "").strip().lstrip("@")
+    username = _extract_tg_username(tg_username, tg_name)
     if username:
         safe_username = html.escape(username, quote=True)
         return f"<a href='tg://resolve?domain={safe_username}'>{safe_display}</a>"

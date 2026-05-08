@@ -236,12 +236,13 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
 
     from ..db import UserRepo as _UR
     approved = await _UR.get_approved_users()
-    matches: list[tuple[str, int, str | None, dict, float]] = []  # (login, tg_id, tg_username, project, score)
+    matches: list[tuple[str, int, str | None, str | None, dict, float]] = []  # (login, tg_id, tg_username, tg_name, project, score)
 
     for user in approved:
         login = user["school_login"]
         tg_id_u = user["tg_id"]
         tg_username_u = user["tg_username"]
+        tg_name_u = user["tg_name"]
         if not login:
             continue
         try:
@@ -251,7 +252,7 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
                 all_projects = await s21.get_active_projects(login)
             best_project, best_score = _find_best_project_match(query, all_projects)
             if best_project and best_score >= 0.65:
-                matches.append((login, tg_id_u, tg_username_u, best_project, best_score))
+                matches.append((login, tg_id_u, tg_username_u, tg_name_u, best_project, best_score))
         except Exception:
             continue
 
@@ -262,9 +263,9 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
         return
 
     mentions = []
-    best_match_name = _project_display_name(max(matches, key=lambda item: item[4])[3], query)
-    for login, tg_id_m, tg_username_m, _, _ in sorted(matches, key=lambda item: item[0]):
-        mentions.append(tg_mention(tg_id_m, login, tg_username=tg_username_m))
+    best_match_name = _project_display_name(max(matches, key=lambda item: item[5])[4], query)
+    for login, tg_id_m, tg_username_m, tg_name_m, _, _ in sorted(matches, key=lambda item: item[0]):
+        mentions.append(tg_mention(tg_id_m, login, tg_username=tg_username_m, tg_name=tg_name_m))
     logins_str = ", ".join(mentions)
     await message.answer(
         f"👥 <b>Работают над «{best_match_name}»</b> — {len(matches)}\n\n{logins_str}",

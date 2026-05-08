@@ -124,6 +124,11 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
         return
 
     # Сценарий 3: всё ок
+    await UserRepo.upsert_basic(member.id, member.full_name or str(member.id), member.username)
+    user = await UserRepo.get_by_tg_id(member.id)
+    if not user:
+        return
+
     login = user["school_login"]
     coalition = user["coalition"]
     is_guest = user["is_guest"] if "is_guest" in user.keys() else 0

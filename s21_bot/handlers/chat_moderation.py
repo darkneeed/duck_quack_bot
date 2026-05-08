@@ -446,6 +446,7 @@ async def cmd_top(message: Message, config: Config) -> None:
             user["tg_id"] if user else None,
             login,
             tg_username=user["tg_username"] if user else None,
+            tg_name=user["tg_name"] if user else None,
         )
         return f"{medal} {name}{tribe} — {xp_str} XP (ур. {level})"
 

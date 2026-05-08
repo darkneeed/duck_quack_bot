@@ -205,7 +205,9 @@ class S21Client:
     async def get_active_projects(self, login: str) -> list[dict]:
         result = []
         for status in ("IN_PROGRESS", "IN_REVIEWS", "REGISTERED"):
-            projects = await self.get_projects(login, status=status, limit=5)
+            # Keep this aligned with query paths like /peers so cached profiles
+            # do not silently drop active projects for users with longer lists.
+            projects = await self.get_projects(login, status=status, limit=20)
             result.extend(projects)
         return result
 
