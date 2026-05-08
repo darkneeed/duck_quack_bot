@@ -37,6 +37,7 @@ async def init_db() -> None:
             CREATE TABLE IF NOT EXISTS users (
                 tg_id            INTEGER PRIMARY KEY,
                 tg_name          TEXT,
+                tg_username      TEXT,
                 school_login     TEXT,
                 coalition        TEXT,
                 status           TEXT NOT NULL DEFAULT 'new',
@@ -54,6 +55,7 @@ async def init_db() -> None:
                 profile_photo_file_id TEXT,
                 profile_comment  TEXT,
                 preferred_contact TEXT,
+                max_profile_url  TEXT,
                 pending_profile_photo_file_id TEXT,
                 pending_profile_photo_message_id INTEGER,
                 pending_profile_comment TEXT,
@@ -105,6 +107,7 @@ async def init_db() -> None:
         migrations = [
             ("users", "invite_user_id", "INTEGER"),
             ("users", "moderator_name", "TEXT"),
+            ("users", "tg_username", "TEXT"),
             ("applications", "moderator_name", "TEXT"),
             ("users", "rocket_username", "TEXT"),
             ("users", "is_guest", "INTEGER NOT NULL DEFAULT 0"),
@@ -112,6 +115,7 @@ async def init_db() -> None:
             ("users", "profile_photo_file_id", "TEXT"),
             ("users", "profile_comment", "TEXT"),
             ("users", "preferred_contact", "TEXT"),
+            ("users", "max_profile_url", "TEXT"),
             ("users", "pending_profile_photo_file_id", "TEXT"),
             ("users", "pending_profile_photo_message_id", "INTEGER"),
             ("users", "pending_profile_comment", "TEXT"),

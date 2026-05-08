@@ -3,34 +3,37 @@ from __future__ import annotations
 import html
 
 from ..strings import (
-    PROFILE_HEADER,
-    PROFILE_LINK,
-    PROFILE_LEVEL,
-    PROFILE_XP,
-    PROFILE_PARALLEL,
-    PROFILE_COALITION,
-    PROFILE_COALITION_RANK,
-    PROFILE_PEER_PTS,
-    PROFILE_CODE_PTS,
-    PROFILE_COINS,
-    PROFILE_PROJECTS_HEADER,
-    PROFILE_SKILLS_HEADER,
     PEER_CARD_COMMENT,
     PEER_CARD_CONTACT_MAX,
     PEER_CARD_CONTACT_NONE,
+    PEER_CARD_CONTACT_PREFERRED,
     PEER_CARD_CONTACT_ROCKET,
     PEER_CARD_CONTACT_TELEGRAM,
-    PEER_CARD_PHOTO_NO,
-    PEER_CARD_PHOTO_YES,
+    PEER_CARD_MAX_NONE,
     PEER_CARD_PENDING_COMMENT,
     PEER_CARD_PENDING_PHOTO,
+    PEER_CARD_PHOTO_NO,
+    PEER_CARD_PHOTO_YES,
     PEER_CARD_PREVIEW_HEADER,
+    PEER_CARD_SECTION_HEADER,
     PEER_CARD_SUBMISSION_COMMENT,
     PEER_CARD_SUBMISSION_COMMENT_TITLE,
     PEER_CARD_SUBMISSION_LOGIN,
     PEER_CARD_SUBMISSION_PHOTO_TITLE,
     PEER_CARD_SUBMISSION_RULES,
     PEER_CARD_SUBMISSION_TG,
+    PROFILE_CODE_PTS,
+    PROFILE_COALITION,
+    PROFILE_COALITION_RANK,
+    PROFILE_COINS,
+    PROFILE_HEADER,
+    PROFILE_LEVEL,
+    PROFILE_LINK,
+    PROFILE_PARALLEL,
+    PROFILE_PEER_PTS,
+    PROFILE_PROJECTS_HEADER,
+    PROFILE_SKILLS_HEADER,
+    PROFILE_XP,
 )
 
 _STATUS_ICONS = {
@@ -49,7 +52,13 @@ _CONTACT_LABELS = {
 }
 
 
-def render_profile_text(login: str, profile: dict, profile_url: str) -> str:
+def normalize_preferred_contact(value: str | None) -> str:
+    if value in _CONTACT_LABELS:
+        return value
+    return "tg"
+
+
+def _build_school_profile_lines(login: str, profile: dict, profile_url: str) -> list[str]:
     info = profile.get("info") or {}
     coalition = profile.get("coalition") or {}
     points = profile.get("points") or {}
@@ -78,7 +87,8 @@ def render_profile_text(login: str, profile: dict, profile_url: str) -> str:
         PROFILE_PARALLEL.format(parallel=parallel),
         (
             PROFILE_COALITION_RANK.format(name=coalition_name, rank=coalition_rank)
-            if coalition_rank else PROFILE_COALITION.format(name=coalition_name)
+            if coalition_rank
+            else PROFILE_COALITION.format(name=coalition_name)
         ),
         "",
         PROFILE_PEER_PTS.format(pts=peer_pts),
@@ -101,63 +111,80 @@ def render_profile_text(login: str, profile: dict, profile_url: str) -> str:
         lines.append("")
         lines.append(PROFILE_SKILLS_HEADER.format(skills=skills_str))
 
-    return "\n".join(lines)
+    return lines
 
 
-def normalize_preferred_contact(value: str | None) -> str:
-    if value in _CONTACT_LABELS:
-        return value
-    return "tg"
+def render_profile_text(login: str, profile: dict, profile_url: str) -> str:
+    return "\n".join(_build_school_profile_lines(login, profile, profile_url))
+
+
+def _format_telegram_value(user) -> str:
+    username = (user["tg_username"] or "").strip()
+    if username:
+        return f"@{html.escape(username)}"
+    return PEER_CARD_CONTACT_NONE
+
+
+def _format_rocket_value(user) -> str:
+    rocket_username = (user["rocket_username"] or "").strip()
+    if rocket_username:
+        return f"<code>{html.escape(rocket_username)}</code>"
+    return PEER_CARD_CONTACT_NONE
+
+
+def _format_max_value(user) -> str:
+    max_profile_url = (user["max_profile_url"] or "").strip()
+    if max_profile_url:
+        safe_url = html.escape(max_profile_url, quote=True)
+        return f"<a href='{safe_url}'>{safe_url}</a>"
+    return PEER_CARD_MAX_NONE
+
+
+def _build_contact_lines(user) -> list[str]:
+    preferred_contact = normalize_preferred_contact(user["preferred_contact"])
+    return [
+        PEER_CARD_CONTACT_PREFERRED.format(contact=_CONTACT_LABELS[preferred_contact]),
+        PEER_CARD_CONTACT_TELEGRAM.format(value=_format_telegram_value(user)),
+        PEER_CARD_CONTACT_ROCKET.format(value=_format_rocket_value(user)),
+        PEER_CARD_CONTACT_MAX.format(value=_format_max_value(user)),
+    ]
+
+
+def _build_peer_card_lines(user) -> list[str]:
+    lines: list[str] = []
+    comment = (user["profile_comment"] or "").strip()
+    if comment:
+        lines.append(PEER_CARD_COMMENT.format(comment=html.escape(comment)))
+    lines.extend(_build_contact_lines(user))
+    return lines
 
 
 def render_peer_card_text(user) -> str:
-    login = html.escape(user["school_login"] or "—")
-    tg_id = user["tg_id"]
-    preferred_contact = normalize_preferred_contact(user["preferred_contact"])
-    comment = (user["profile_comment"] or "").strip()
-
-    lines = [
-        f"👤 <b>{login}</b>",
-        f"💬 <b>Telegram:</b> <a href='tg://user?id={tg_id}'>{login}</a>",
-    ]
-
-    if comment:
-        lines.append(PEER_CARD_COMMENT.format(comment=html.escape(comment)))
-
-    if preferred_contact == "tg":
-        lines.append(PEER_CARD_CONTACT_TELEGRAM.format(tg_id=tg_id))
-    elif preferred_contact == "rocket":
-        rocket_username = (user["rocket_username"] or "").strip()
-        if rocket_username:
-            lines.append(
-                PEER_CARD_CONTACT_ROCKET.format(
-                    rocket=html.escape(rocket_username),
-                )
-            )
-        else:
-            lines.append(PEER_CARD_CONTACT_NONE.format(contact=_CONTACT_LABELS[preferred_contact]))
-    else:
-        lines.append(PEER_CARD_CONTACT_MAX)
-
+    lines = [PEER_CARD_SECTION_HEADER]
+    lines.extend(_build_peer_card_lines(user))
     return "\n".join(lines)
 
 
-def render_peer_card_editor_text(user) -> str:
+def render_peer_card_editor_text(login: str, profile: dict, profile_url: str, user) -> str:
     has_photo = bool(user["profile_photo_file_id"])
-    preferred_contact = normalize_preferred_contact(user["preferred_contact"])
-    preview = render_peer_card_text(user)
-    lines = [
-        PEER_CARD_PREVIEW_HEADER,
-        "",
-        preview,
-        "",
-        PEER_CARD_PHOTO_YES if has_photo else PEER_CARD_PHOTO_NO,
-        f"📡 <b>Выбранный канал:</b> {_CONTACT_LABELS[preferred_contact]}",
-    ]
+    lines = _build_school_profile_lines(login, profile, profile_url)
+    lines.append("")
+    lines.append(PEER_CARD_PREVIEW_HEADER)
+    lines.append("")
+    lines.extend(_build_peer_card_lines(user))
+    lines.append("")
+    lines.append(PEER_CARD_PHOTO_YES if has_photo else PEER_CARD_PHOTO_NO)
     if user["pending_profile_photo_file_id"]:
         lines.append(PEER_CARD_PENDING_PHOTO)
     if (user["pending_profile_comment"] or "").strip():
         lines.append(PEER_CARD_PENDING_COMMENT)
+    return "\n".join(lines)
+
+
+def render_full_peer_card_text(login: str, profile: dict, profile_url: str, user) -> str:
+    lines = _build_school_profile_lines(login, profile, profile_url)
+    lines.append("")
+    lines.extend(render_peer_card_text(user).splitlines())
     return "\n".join(lines)
 
 

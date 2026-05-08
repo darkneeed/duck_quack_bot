@@ -4,14 +4,17 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from ..services import S21Client
+from ..services.cache_poller import get_or_refresh
 from ..config import Config
 from ..db import UserRepo
 from ..strings import (
     ONLY_APPROVED, WHERE_USAGE, WHERE_IN_CAMPUS,
     WHERE_NOT_IN_CAMPUS, WHERE_ERROR,
+    PROFILE_ERROR,
     PEER_CARD_NOT_FOUND, PEER_CARD_USAGE,
 )
-from ..utils.profile import render_peer_card_text
+from ..utils.branding import build_profile_url
+from ..utils.profile import render_full_peer_card_text
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +78,7 @@ async def cmd_where(message: Message, s21: S21Client, config: Config) -> None:
 
 
 @router.message(Command("peer", "пир", ignore_case=True))
-async def cmd_peer_card(message: Message, config: Config) -> None:
+async def cmd_peer_card(message: Message, s21: S21Client, config: Config) -> None:
     assert message.from_user is not None
 
     if not _check_scope(message.chat.type, config.cmd_peer_scope):
@@ -97,12 +100,23 @@ async def cmd_peer_card(message: Message, config: Config) -> None:
         await message.answer(PEER_CARD_NOT_FOUND.format(login=login), parse_mode="HTML")
         return
 
-    card_text = render_peer_card_text(user)
+    try:
+        profile = await get_or_refresh(login, s21)
+        if not profile:
+            raise ValueError("empty response")
+    except Exception as exc:
+        await message.answer(PROFILE_ERROR.format(error=exc), parse_mode="HTML")
+        return
+
+    card_text = render_full_peer_card_text(login, profile, build_profile_url(login, config), user)
     if user["profile_photo_file_id"]:
         await message.answer_photo(
             photo=user["profile_photo_file_id"],
-            caption=card_text,
+        )
+        await message.answer(
+            card_text,
             parse_mode="HTML",
+            disable_web_page_preview=True,
         )
         return
 

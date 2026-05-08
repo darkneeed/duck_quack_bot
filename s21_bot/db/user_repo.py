@@ -93,12 +93,12 @@ class UserRepo:
                 return await cur.fetchall()
 
     @staticmethod
-    async def upsert_basic(tg_id: int, tg_name: str) -> None:
+    async def upsert_basic(tg_id: int, tg_name: str, tg_username: str | None = None) -> None:
         async with get_db() as db:
             await db.execute(
-                "INSERT INTO users (tg_id, tg_name) VALUES (?, ?) "
-                "ON CONFLICT(tg_id) DO UPDATE SET tg_name = excluded.tg_name",
-                (tg_id, tg_name),
+                "INSERT INTO users (tg_id, tg_name, tg_username) VALUES (?, ?, ?) "
+                "ON CONFLICT(tg_id) DO UPDATE SET tg_name = excluded.tg_name, tg_username = excluded.tg_username",
+                (tg_id, tg_name, tg_username),
             )
             await db.commit()
 
@@ -233,6 +233,15 @@ class UserRepo:
             await db.execute(
                 "UPDATE users SET preferred_contact=? WHERE tg_id=?",
                 (preferred_contact, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_max_profile_url(tg_id: int, max_profile_url: str | None) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET max_profile_url=? WHERE tg_id=?",
+                (max_profile_url, tg_id),
             )
             await db.commit()
 

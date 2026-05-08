@@ -89,7 +89,11 @@ async def _send_failed_auth_alert(
 async def _check_and_respond(message: Message, state: FSMContext, config: Config) -> bool:
     assert message.from_user is not None
     user = await UserRepo.get_by_tg_id(message.from_user.id)
-    await UserRepo.upsert_basic(message.from_user.id, tg_display_name(message.from_user))
+    await UserRepo.upsert_basic(
+        message.from_user.id,
+        tg_display_name(message.from_user),
+        message.from_user.username,
+    )
 
     if user:
         match user["status"]:
@@ -468,6 +472,7 @@ async def skip_comment(
     await _submit_application(
         tg_id=callback.from_user.id,
         tg_name=tg_display_name(callback.from_user),
+        tg_username=callback.from_user.username,
         user_comment=None,
         state=state,
         bot=bot,
@@ -491,6 +496,7 @@ async def process_comment(
     await _submit_application(
         tg_id=message.from_user.id,
         tg_name=tg_display_name(message.from_user),
+        tg_username=message.from_user.username,
         user_comment=raw[:500] if raw else None,
         state=state,
         bot=bot,
@@ -503,6 +509,7 @@ async def process_comment(
 async def _submit_application(
     tg_id: int,
     tg_name: str,
+    tg_username: str | None,
     user_comment: str | None,
     state: FSMContext,
     bot: Bot,
@@ -516,7 +523,7 @@ async def _submit_application(
     rc_username = data.get("rc_username")
 
     now = now_iso()
-    await UserRepo.upsert_basic(tg_id, tg_name)
+    await UserRepo.upsert_basic(tg_id, tg_name, tg_username)
     await UserRepo.set_application_date(tg_id, now)
 
     if rc_username:

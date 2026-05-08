@@ -15,3 +15,5 @@ class ProfileCardFSM(StatesGroup):
     waiting_photo = State()
 
     waiting_comment = State()
+
+    waiting_max_link = State()

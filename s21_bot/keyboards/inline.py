@@ -97,7 +97,6 @@ def verification_result_kb(result: str, voter_name: str = "") -> InlineKeyboardM
 
 
 from ..strings import (  # noqa: E402
-    CABINET_BTN_CARD,
     CABINET_BTN_PROFILE,
     CABINET_BTN_GENCODE,
     CABINET_BTN_MYCODES,
@@ -111,6 +110,7 @@ from ..strings import (  # noqa: E402
     PEER_CARD_BTN_DELETE_COMMENT,
     PEER_CARD_BTN_DELETE_PHOTO,
     PEER_CARD_BTN_EDIT_COMMENT,
+    PEER_CARD_BTN_EDIT_MAX_LINK,
     PEER_CARD_BTN_EDIT_PHOTO,
     PEER_CARD_SUBMISSION_BTN_APPROVE,
     PEER_CARD_SUBMISSION_BTN_REJECT,
@@ -126,7 +126,6 @@ def cabinet_home_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu for approved users."""
     builder = InlineKeyboardBuilder()
     builder.button(text=CABINET_BTN_PROFILE, callback_data="cabinet:profile")
-    builder.button(text=CABINET_BTN_CARD, callback_data="cabinet:card_open")
     builder.button(text=CABINET_BTN_GENCODE, callback_data="cabinet:gencode")
     builder.button(text=CABINET_BTN_MYCODES, callback_data="cabinet:mycodes")
     builder.button(text=CABINET_BTN_HELP, callback_data="cabinet:help")
@@ -153,11 +152,12 @@ def cabinet_profile_card_kb(*, has_photo: bool, has_comment: bool) -> InlineKeyb
     builder.button(text=PEER_CARD_BTN_EDIT_PHOTO, callback_data="cabinet:card_edit_photo")
     builder.button(text=PEER_CARD_BTN_EDIT_COMMENT, callback_data="cabinet:card_edit_comment")
     builder.button(text=PEER_CARD_BTN_CONTACT, callback_data="cabinet:card_contact")
+    builder.button(text=PEER_CARD_BTN_EDIT_MAX_LINK, callback_data="cabinet:card_edit_max_link")
     if has_photo:
         builder.button(text=PEER_CARD_BTN_DELETE_PHOTO, callback_data="cabinet:card_delete_photo")
     if has_comment:
         builder.button(text=PEER_CARD_BTN_DELETE_COMMENT, callback_data="cabinet:card_delete_comment")
-    builder.button(text=PEER_CARD_BTN_BACK, callback_data="cabinet:card_back")
+    builder.button(text=PEER_CARD_BTN_BACK, callback_data="cabinet:home")
     builder.adjust(1)
     return builder.as_markup()
 
