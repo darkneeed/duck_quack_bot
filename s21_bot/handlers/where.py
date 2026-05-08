@@ -9,7 +9,9 @@ from ..db import UserRepo
 from ..strings import (
     ONLY_APPROVED, WHERE_USAGE, WHERE_IN_CAMPUS,
     WHERE_NOT_IN_CAMPUS, WHERE_ERROR,
+    PEER_CARD_NOT_FOUND, PEER_CARD_USAGE,
 )
+from ..utils.profile import render_peer_card_text
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,45 @@ async def cmd_where(message: Message, s21: S21Client, config: Config) -> None:
 
     seat = f"{cluster} {row}{number}".strip()
     await message.answer(WHERE_IN_CAMPUS.format(login=login, seat=seat), parse_mode="HTML")
+
+
+@router.message(Command("peer", "пир", ignore_case=True))
+async def cmd_peer_card(message: Message, config: Config) -> None:
+    assert message.from_user is not None
+
+    if not _check_scope(message.chat.type, config.cmd_peer_scope):
+        return
+
+    caller = await UserRepo.get_by_tg_id(message.from_user.id)
+    if not caller or caller["status"] != "approved":
+        await message.answer(ONLY_APPROVED)
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer(PEER_CARD_USAGE, parse_mode="HTML")
+        return
+
+    login = parts[1].strip().lower()
+    user = await UserRepo.get_approved_by_school_login(login)
+    if not user:
+        await message.answer(PEER_CARD_NOT_FOUND.format(login=login), parse_mode="HTML")
+        return
+
+    card_text = render_peer_card_text(user)
+    if user["profile_photo_file_id"]:
+        await message.answer_photo(
+            photo=user["profile_photo_file_id"],
+            caption=card_text,
+            parse_mode="HTML",
+        )
+        return
+
+    await message.answer(
+        card_text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
 
 
 @router.message(Command("peers", "пиры", ignore_case=True))

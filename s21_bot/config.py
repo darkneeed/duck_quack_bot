@@ -64,6 +64,7 @@ RUNTIME_CONFIG_ENV_MAP: dict[str, str] = {
     "enable_newcomer": "ENABLE_NEWCOMER",
     "auto_delete_join_messages": "AUTO_DELETE_JOIN_MESSAGES",
     "cmd_where_scope": "CMD_WHERE_SCOPE",
+    "cmd_peer_scope": "CMD_PEER_SCOPE",
     "cmd_peers_scope": "CMD_PEERS_SCOPE",
     "cmd_logtime_scope": "CMD_LOGTIME_SCOPE",
     "cmd_top_scope": "CMD_TOP_SCOPE",
@@ -119,6 +120,7 @@ class Config:
     auto_delete_join_messages: bool = field(default=False)
 
     cmd_where_scope: str = field(default="BOTH")
+    cmd_peer_scope: str = field(default="BOTH")
     cmd_peers_scope: str = field(default="BOTH")
     cmd_logtime_scope: str = field(default="BOTH")
     cmd_top_scope: str = field(default="PUBLIC")
@@ -160,6 +162,7 @@ def _coerce_field(name: str, raw_value: str, current: Config) -> Any:
     int_set_fields = {"social_trust_project_ids", "admin_ids"}
     scope_fields = {
         "cmd_where_scope",
+        "cmd_peer_scope",
         "cmd_peers_scope",
         "cmd_logtime_scope",
         "cmd_top_scope",

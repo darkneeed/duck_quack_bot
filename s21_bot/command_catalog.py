@@ -65,6 +65,16 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         available_in_public=True,
     ),
     CommandSpec(
+        command="/peer <логин>",
+        aliases=("/пир <логин>",),
+        description="показать карточку участника сообщества",
+        role="approved",
+        group="scoped",
+        scope_key="cmd_peer_scope",
+        available_in_private=True,
+        available_in_public=True,
+    ),
+    CommandSpec(
         command="/peers <проект>",
         aliases=("/пиры <проект>",),
         description="найти участников, которые сейчас делают проект",

@@ -9,3 +9,9 @@ class ApplicationFSM(StatesGroup):
     waiting_otp = State()
 
     waiting_comment = State()
+
+
+class ProfileCardFSM(StatesGroup):
+    waiting_photo = State()
+
+    waiting_comment = State()

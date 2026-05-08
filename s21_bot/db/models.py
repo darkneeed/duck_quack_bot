@@ -47,7 +47,17 @@ async def init_db() -> None:
                 application_date TEXT,
                 decision_date    TEXT,
                 cooldown_until   TEXT,
-                is_banned        INTEGER NOT NULL DEFAULT 0
+                is_banned        INTEGER NOT NULL DEFAULT 0,
+                rocket_username  TEXT,
+                is_guest         INTEGER NOT NULL DEFAULT 0,
+                home_campus      TEXT,
+                profile_photo_file_id TEXT,
+                profile_comment  TEXT,
+                preferred_contact TEXT,
+                pending_profile_photo_file_id TEXT,
+                pending_profile_photo_message_id INTEGER,
+                pending_profile_comment TEXT,
+                pending_profile_comment_message_id INTEGER
             )
         """)
         await db.execute("""
@@ -58,6 +68,7 @@ async def init_db() -> None:
                 school_login      TEXT,
                 user_comment      TEXT,
                 submitted_at      TEXT,
+                coalition         TEXT,
                 status            TEXT NOT NULL DEFAULT 'pending',
                 moderator_id      INTEGER,
                 moderator_name    TEXT,
@@ -98,6 +109,14 @@ async def init_db() -> None:
             ("users", "rocket_username", "TEXT"),
             ("users", "is_guest", "INTEGER NOT NULL DEFAULT 0"),
             ("users", "home_campus", "TEXT"),
+            ("users", "profile_photo_file_id", "TEXT"),
+            ("users", "profile_comment", "TEXT"),
+            ("users", "preferred_contact", "TEXT"),
+            ("users", "pending_profile_photo_file_id", "TEXT"),
+            ("users", "pending_profile_photo_message_id", "INTEGER"),
+            ("users", "pending_profile_comment", "TEXT"),
+            ("users", "pending_profile_comment_message_id", "INTEGER"),
+            ("applications", "coalition", "TEXT"),
         ]
         for table, col, definition in migrations:
             try:

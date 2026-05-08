@@ -4,6 +4,8 @@ from .inline import (
     reject_reason_input_kb, cooldown_with_reason_kb,
     verification_request_kb, verification_result_kb,
     cabinet_kb, cabinet_home_kb, cabinet_back_kb,
+    cabinet_profile_card_kb, cabinet_profile_card_contact_kb, cabinet_cancel_input_kb,
+    profile_card_submission_kb, profile_card_reject_reason_kb,
 )
 
 __all__ = [
@@ -12,4 +14,6 @@ __all__ = [
     "reject_reason_input_kb", "cooldown_with_reason_kb",
     "verification_request_kb", "verification_result_kb",
     "cabinet_kb", "cabinet_home_kb", "cabinet_back_kb",
+    "cabinet_profile_card_kb", "cabinet_profile_card_contact_kb", "cabinet_cancel_input_kb",
+    "profile_card_submission_kb", "profile_card_reject_reason_kb",
 ]

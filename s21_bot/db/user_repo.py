@@ -24,6 +24,15 @@ class UserRepo:
                 return await cur.fetchone()
 
     @staticmethod
+    async def get_approved_by_school_login(login: str) -> Optional[aiosqlite.Row]:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT * FROM users WHERE school_login = ? AND status = 'approved'",
+                (login.lower(),),
+            ) as cur:
+                return await cur.fetchone()
+
+    @staticmethod
     async def get_by_school_login_any_status(login: str) -> Optional[aiosqlite.Row]:
         async with get_db() as db:
             async with db.execute(
@@ -179,6 +188,135 @@ class UserRepo:
             await db.execute(
                 "UPDATE users SET rocket_username=? WHERE tg_id=?",
                 (rc_username, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_profile_photo_file_id(tg_id: int, file_id: str) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_photo_file_id=? WHERE tg_id=?",
+                (file_id, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def clear_profile_photo_file_id(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_photo_file_id=NULL, pending_profile_photo_file_id=NULL, pending_profile_photo_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_profile_comment(tg_id: int, comment: str | None) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_comment=? WHERE tg_id=?",
+                (comment, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def clear_profile_comment(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_comment=NULL, pending_profile_comment=NULL, pending_profile_comment_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_preferred_contact(tg_id: int, preferred_contact: str) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET preferred_contact=? WHERE tg_id=?",
+                (preferred_contact, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_pending_profile_photo(
+        tg_id: int,
+        file_id: str | None,
+        moderation_message_id: int | None,
+    ) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_photo_file_id=?, pending_profile_photo_message_id=? WHERE tg_id=?",
+                (file_id, moderation_message_id, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def clear_pending_profile_photo(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_photo_file_id=NULL, pending_profile_photo_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def approve_pending_profile_photo(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_photo_file_id=pending_profile_photo_file_id, "
+                "pending_profile_photo_file_id=NULL, pending_profile_photo_message_id=NULL "
+                "WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def reject_pending_profile_photo(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_photo_file_id=NULL, pending_profile_photo_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def set_pending_profile_comment(
+        tg_id: int,
+        comment: str | None,
+        moderation_message_id: int | None,
+    ) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_comment=?, pending_profile_comment_message_id=? WHERE tg_id=?",
+                (comment, moderation_message_id, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def clear_pending_profile_comment(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_comment=NULL, pending_profile_comment_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def approve_pending_profile_comment(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET profile_comment=pending_profile_comment, "
+                "pending_profile_comment=NULL, pending_profile_comment_message_id=NULL "
+                "WHERE tg_id=?",
+                (tg_id,),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def reject_pending_profile_comment(tg_id: int) -> None:
+        async with get_db() as db:
+            await db.execute(
+                "UPDATE users SET pending_profile_comment=NULL, pending_profile_comment_message_id=NULL WHERE tg_id=?",
+                (tg_id,),
             )
             await db.commit()
 

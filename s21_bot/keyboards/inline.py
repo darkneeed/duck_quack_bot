@@ -96,13 +96,37 @@ def verification_result_kb(result: str, voter_name: str = "") -> InlineKeyboardM
     return builder.as_markup()
 
 
-from ..strings import CABINET_BTN_PROFILE, CABINET_BTN_GENCODE, CABINET_BTN_MYCODES, CABINET_BTN_HELP  # noqa: E402
+from ..strings import (  # noqa: E402
+    CABINET_BTN_CARD,
+    CABINET_BTN_PROFILE,
+    CABINET_BTN_GENCODE,
+    CABINET_BTN_MYCODES,
+    CABINET_BTN_HELP,
+    PEER_CARD_BTN_BACK,
+    PEER_CARD_BTN_CANCEL,
+    PEER_CARD_BTN_CONTACT,
+    PEER_CARD_BTN_CONTACT_MAX,
+    PEER_CARD_BTN_CONTACT_ROCKET,
+    PEER_CARD_BTN_CONTACT_TG,
+    PEER_CARD_BTN_DELETE_COMMENT,
+    PEER_CARD_BTN_DELETE_PHOTO,
+    PEER_CARD_BTN_EDIT_COMMENT,
+    PEER_CARD_BTN_EDIT_PHOTO,
+    PEER_CARD_SUBMISSION_BTN_APPROVE,
+    PEER_CARD_SUBMISSION_BTN_REJECT,
+    PEER_CARD_SUBMISSION_REASON_COMMENT_PERSONAL,
+    PEER_CARD_SUBMISSION_REASON_COMMENT_RULES,
+    PEER_CARD_SUBMISSION_REASON_COMMENT_SWEAR,
+    PEER_CARD_SUBMISSION_REASON_PHOTO_FACE,
+    PEER_CARD_SUBMISSION_REASON_PHOTO_OTHERS,
+)
 
 
 def cabinet_home_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     """Main menu for approved users."""
     builder = InlineKeyboardBuilder()
     builder.button(text=CABINET_BTN_PROFILE, callback_data="cabinet:profile")
+    builder.button(text=CABINET_BTN_CARD, callback_data="cabinet:card_open")
     builder.button(text=CABINET_BTN_GENCODE, callback_data="cabinet:gencode")
     builder.button(text=CABINET_BTN_MYCODES, callback_data="cabinet:mycodes")
     builder.button(text=CABINET_BTN_HELP, callback_data="cabinet:help")
@@ -122,3 +146,93 @@ def cabinet_back_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
 
 def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     return cabinet_home_kb(is_admin=is_admin)
+
+
+def cabinet_profile_card_kb(*, has_photo: bool, has_comment: bool) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text=PEER_CARD_BTN_EDIT_PHOTO, callback_data="cabinet:card_edit_photo")
+    builder.button(text=PEER_CARD_BTN_EDIT_COMMENT, callback_data="cabinet:card_edit_comment")
+    builder.button(text=PEER_CARD_BTN_CONTACT, callback_data="cabinet:card_contact")
+    if has_photo:
+        builder.button(text=PEER_CARD_BTN_DELETE_PHOTO, callback_data="cabinet:card_delete_photo")
+    if has_comment:
+        builder.button(text=PEER_CARD_BTN_DELETE_COMMENT, callback_data="cabinet:card_delete_comment")
+    builder.button(text=PEER_CARD_BTN_BACK, callback_data="cabinet:card_back")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cabinet_profile_card_contact_kb(selected: str) -> InlineKeyboardMarkup:
+    labels = {
+        "tg": PEER_CARD_BTN_CONTACT_TG,
+        "max": PEER_CARD_BTN_CONTACT_MAX,
+        "rocket": PEER_CARD_BTN_CONTACT_ROCKET,
+    }
+    builder = InlineKeyboardBuilder()
+    for value in ("tg", "max", "rocket"):
+        prefix = "✅ " if selected == value else ""
+        builder.button(
+            text=f"{prefix}{labels[value]}",
+            callback_data=f"cabinet:card_contact_set:{value}",
+        )
+    builder.button(text=PEER_CARD_BTN_BACK, callback_data="cabinet:card_refresh")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def cabinet_cancel_input_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=PEER_CARD_BTN_CANCEL, callback_data="cabinet:card_cancel_input"))
+    return builder.as_markup()
+
+
+def profile_card_submission_kb(*, submission_type: str, tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=PEER_CARD_SUBMISSION_BTN_APPROVE,
+            callback_data=f"profile_card:approve:{submission_type}:{tg_id}",
+        ),
+        InlineKeyboardButton(
+            text=PEER_CARD_SUBMISSION_BTN_REJECT,
+            callback_data=f"profile_card:reject:{submission_type}:{tg_id}",
+        ),
+    )
+    return builder.as_markup()
+
+
+def profile_card_reject_reason_kb(*, submission_type: str, tg_id: int) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if submission_type == "photo":
+        builder.row(
+            InlineKeyboardButton(
+                text=PEER_CARD_SUBMISSION_REASON_PHOTO_FACE,
+                callback_data=f"profile_card:reject_reason:{submission_type}:{tg_id}:no_face",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=PEER_CARD_SUBMISSION_REASON_PHOTO_OTHERS,
+                callback_data=f"profile_card:reject_reason:{submission_type}:{tg_id}:has_others",
+            )
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(
+                text=PEER_CARD_SUBMISSION_REASON_COMMENT_SWEAR,
+                callback_data=f"profile_card:reject_reason:{submission_type}:{tg_id}:swear",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=PEER_CARD_SUBMISSION_REASON_COMMENT_RULES,
+                callback_data=f"profile_card:reject_reason:{submission_type}:{tg_id}:rules",
+            )
+        )
+        builder.row(
+            InlineKeyboardButton(
+                text=PEER_CARD_SUBMISSION_REASON_COMMENT_PERSONAL,
+                callback_data=f"profile_card:reject_reason:{submission_type}:{tg_id}:personal",
+            )
+        )
+    return builder.as_markup()
