@@ -15,7 +15,6 @@ from ..strings import (
     PEER_CARD_PENDING_PHOTO,
     PEER_CARD_PHOTO_NO,
     PEER_CARD_PHOTO_YES,
-    PEER_CARD_SECTION_HEADER,
     PEER_CARD_SUBMISSION_COMMENT,
     PEER_CARD_SUBMISSION_COMMENT_TITLE,
     PEER_CARD_SUBMISSION_LOGIN,
@@ -61,13 +60,13 @@ def normalize_preferred_contact(value: str | None) -> str:
     return "tg"
 
 
-def _build_school_profile_lines(
+def _build_school_profile_sections(
     login: str,
     profile: dict,
     profile_url: str,
     *,
     show_coins: bool = True,
-) -> list[str]:
+) -> tuple[list[str], list[str]]:
     info = profile.get("info") or {}
     coalition = profile.get("coalition") or {}
     points = profile.get("points") or {}
@@ -84,7 +83,7 @@ def _build_school_profile_lines(
     code_pts = points.get("codeReviewPoints", 0)
     coins = points.get("coins", 0)
 
-    lines = [
+    head_lines = [
         PROFILE_HEADER.format(login=login),
         PROFILE_LINK.format(url=profile_url),
         "",
@@ -99,29 +98,48 @@ def _build_school_profile_lines(
             if coalition_rank
             else PROFILE_COALITION.format(name=coalition_name)
         ),
+    ]
+
+    tail_lines = [
         "",
         PROFILE_PEER_PTS.format(pts=peer_pts),
         PROFILE_CODE_PTS.format(pts=code_pts),
     ]
     if show_coins:
-        lines.append(PROFILE_COINS.format(coins=coins))
+        tail_lines.append(PROFILE_COINS.format(coins=coins))
 
     if projects:
-        lines.append("")
-        lines.append(PROFILE_PROJECTS_HEADER)
+        tail_lines.append("")
+        tail_lines.append(PROFILE_PROJECTS_HEADER)
         for project in projects[:5]:
             icon = _STATUS_ICONS.get(project.get("status", ""), "▪️")
             pct = project.get("finalPercentage")
             pct_str = f" — {pct}%" if pct else ""
-            lines.append(f"{icon} {project.get('title', '—')}{pct_str}")
+            tail_lines.append(f"{icon} {project.get('title', '—')}{pct_str}")
 
     if skills:
         top_skills = skills[:5]
         skills_str = ", ".join(f"{skill['name']} ({skill['points']})" for skill in top_skills)
-        lines.append("")
-        lines.append(PROFILE_SKILLS_HEADER.format(skills=skills_str))
+        tail_lines.append("")
+        tail_lines.append(PROFILE_SKILLS_HEADER.format(skills=skills_str))
 
-    return lines
+    return head_lines, tail_lines
+
+
+def _build_school_profile_lines(
+    login: str,
+    profile: dict,
+    profile_url: str,
+    *,
+    show_coins: bool = True,
+) -> list[str]:
+    head_lines, tail_lines = _build_school_profile_sections(
+        login,
+        profile,
+        profile_url,
+        show_coins=show_coins,
+    )
+    return [*head_lines, *tail_lines]
 
 
 def render_profile_text(
@@ -178,18 +196,22 @@ def _build_peer_card_lines(user) -> list[str]:
 
 
 def render_peer_card_text(user) -> str:
-    lines = [PEER_CARD_SECTION_HEADER]
+    lines: list[str] = []
     lines.extend(_build_peer_card_lines(user))
     return "\n".join(lines)
 
 
 def render_peer_card_editor_text(login: str, profile: dict, profile_url: str, user) -> str:
     has_photo = bool(user["profile_photo_file_id"])
-    lines = _build_school_profile_lines(login, profile, profile_url, show_coins=True)
-    lines.append("")
-    lines.append("")
+    head_lines, tail_lines = _build_school_profile_sections(
+        login,
+        profile,
+        profile_url,
+        show_coins=True,
+    )
+    lines = [*head_lines, "", ""]
     lines.extend(_build_peer_card_lines(user))
-    lines.append("")
+    lines.extend(tail_lines)
     lines.append(PEER_CARD_PHOTO_YES if has_photo else PEER_CARD_PHOTO_NO)
     if user["pending_profile_photo_file_id"]:
         lines.append(PEER_CARD_PENDING_PHOTO)
@@ -206,9 +228,15 @@ def render_full_peer_card_text(
     *,
     show_coins: bool = False,
 ) -> str:
-    lines = _build_school_profile_lines(login, profile, profile_url, show_coins=show_coins)
-    lines.append("")
+    head_lines, tail_lines = _build_school_profile_sections(
+        login,
+        profile,
+        profile_url,
+        show_coins=show_coins,
+    )
+    lines = [*head_lines, ""]
     lines.extend(render_peer_card_text(user).splitlines())
+    lines.extend(tail_lines)
     return "\n".join(lines)
 
 
