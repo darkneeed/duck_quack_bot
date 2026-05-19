@@ -70,6 +70,7 @@ async def run_events_poller(bot: Bot, s21: S21Client, config: Config) -> None:
         return
 
     poll_interval = config.api_poll_interval
+    events_thread_id = config.events_topic_id
     logger.info("Events poller started, interval=%ds", poll_interval)
 
     try:
@@ -94,13 +95,30 @@ async def run_events_poller(bot: Bot, s21: S21Client, config: Config) -> None:
                 sent = await send_message_with_topic(
                     bot,
                     chat_id=config.moderation_chat_id,
-                    message_thread_id=config.events_topic_id or None,
+                    message_thread_id=events_thread_id or None,
                     topic_name="EVENTS_TOPIC_ID",
                     topic_logger=logger,
                     text=text,
                     parse_mode="HTML",
                     disable_web_page_preview=True,
                 )
+                if sent is None and events_thread_id:
+                    logger.warning(
+                        "Disabling EVENTS_TOPIC_ID for current poller run: chat_id=%s thread_id=%s",
+                        config.moderation_chat_id,
+                        events_thread_id,
+                    )
+                    events_thread_id = 0
+                    sent = await send_message_with_topic(
+                        bot,
+                        chat_id=config.moderation_chat_id,
+                        message_thread_id=None,
+                        topic_name="EVENTS_TOPIC_ID",
+                        topic_logger=logger,
+                        text=text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                    )
                 if sent is not None:
                     _seen_event_ids.add(eid)
                     logger.info("Posted new event id=%s name=%s", eid, event.get("name"))

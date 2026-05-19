@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 
 from aiogram import Bot, F, Router
@@ -15,6 +16,7 @@ from ..utils.telegram import safe_callback_answer
 from .admin_common import IsAdminInPrivateChat, IsAdminInPrivateChatCB
 
 router = Router(name="admin_panel")
+logger = logging.getLogger(__name__)
 
 _PAGE_SIZE = 6
 _RUNTIME_KEYS = get_runtime_config_keys()
@@ -62,6 +64,7 @@ _SETTING_META: dict[str, SettingMeta] = {
     "enable_newcomer": SettingMeta("Уведомления о новичках", "Отправка newcomer-карточек в чат сообщества.", "features", is_toggle=True),
     "auto_delete_join_messages": SettingMeta("Удалять сервисные сообщения о входе", "Автоматически удалять Telegram service messages о вступлении.", "features", is_toggle=True),
     "cmd_where_scope": SettingMeta("/where", "Где доступна команда поиска участника.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
+    "cmd_peer_scope": SettingMeta("/пир", "Где доступна команда карточки участника.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
     "cmd_peers_scope": SettingMeta("/пиры", "Где доступна команда поиска участников по проекту.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
     "cmd_logtime_scope": SettingMeta("/логтайм", "Где доступна команда логтайма.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
     "cmd_top_scope": SettingMeta("/топ", "Где доступна команда топа по XP.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
@@ -102,7 +105,15 @@ def _short_value(key: str, value: object) -> str:
 
 
 def _section_keys(section: str) -> list[str]:
-    return [key for key in _RUNTIME_KEYS if _SETTING_META[key].section == section]
+    keys: list[str] = []
+    for key in _RUNTIME_KEYS:
+        meta = _SETTING_META.get(key)
+        if meta is None:
+            logger.warning("Admin panel has no metadata for runtime key: %s", key)
+            continue
+        if meta.section == section:
+            keys.append(key)
+    return keys
 
 
 def _panel_text(config: Config) -> str:
