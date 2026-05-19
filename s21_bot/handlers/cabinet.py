@@ -4,6 +4,7 @@ import io
 import logging
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
@@ -89,13 +90,26 @@ async def _edit_cabinet_card(
     disable_web_page_preview: bool = True,
 ) -> None:
     assert callback.from_user is not None
-    await callback.message.answer(
-        text,
-        parse_mode="HTML",
-        disable_web_page_preview=disable_web_page_preview,
-        reply_markup=cabinet_back_kb(is_admin=_is_admin(callback.from_user.id, config)),
-    )
-    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+    keyboard = cabinet_back_kb(is_admin=_is_admin(callback.from_user.id, config))
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=disable_web_page_preview,
+            reply_markup=keyboard,
+        )
+    except TelegramBadRequest as exc:
+        error_text = str(exc).lower()
+        if "message is not modified" in error_text:
+            return
+        # For media/system messages where edit_text is not allowed, keep legacy fallback.
+        await callback.message.answer(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=disable_web_page_preview,
+            reply_markup=keyboard,
+        )
+        await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 def _profile_card_keyboard(user) -> object:
@@ -246,13 +260,24 @@ async def _require_approved_user(tg_id: int):
 
 async def _render_contact_picker(callback: CallbackQuery, user) -> None:
     selected = normalize_preferred_contact(user["preferred_contact"])
-    await callback.message.answer(
-        PEER_CARD_CONTACT_PROMPT,
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=cabinet_profile_card_contact_kb(selected=selected),
-    )
-    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+    try:
+        await callback.message.edit_text(
+            PEER_CARD_CONTACT_PROMPT,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=cabinet_profile_card_contact_kb(selected=selected),
+        )
+    except TelegramBadRequest as exc:
+        error_text = str(exc).lower()
+        if "message is not modified" in error_text:
+            return
+        await callback.message.answer(
+            PEER_CARD_CONTACT_PROMPT,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=cabinet_profile_card_contact_kb(selected=selected),
+        )
+        await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 def _is_valid_max_profile_url(raw_url: str) -> bool:
@@ -529,12 +554,22 @@ async def cb_cabinet_home(callback: CallbackQuery, config: Config) -> None:
         await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
         return
     await safe_callback_answer(callback)
-    await callback.message.answer(
-        _cabinet_home_text(user["school_login"]),
-        parse_mode="HTML",
-        reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
-    )
-    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+    try:
+        await callback.message.edit_text(
+            _cabinet_home_text(user["school_login"]),
+            parse_mode="HTML",
+            reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
+        )
+    except TelegramBadRequest as exc:
+        error_text = str(exc).lower()
+        if "message is not modified" in error_text:
+            return
+        await callback.message.answer(
+            _cabinet_home_text(user["school_login"]),
+            parse_mode="HTML",
+            reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
+        )
+        await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
 
 
 @router.callback_query(F.data == "cabinet:gencode")
