@@ -186,10 +186,10 @@ def _build_contact_lines(user) -> list[str]:
     ]
 
 
-def _build_peer_card_lines(user) -> list[str]:
+def _build_peer_card_lines(user, *, include_comment: bool = True) -> list[str]:
     lines: list[str] = []
     comment = (user["profile_comment"] or "").strip()
-    if comment:
+    if include_comment and comment:
         lines.append(PEER_CARD_COMMENT.format(comment=html.escape(comment)))
     lines.extend(_build_contact_lines(user))
     return lines
@@ -203,14 +203,19 @@ def render_peer_card_text(user) -> str:
 
 def render_peer_card_editor_text(login: str, profile: dict, profile_url: str, user) -> str:
     has_photo = bool(user["profile_photo_file_id"])
+    comment = (user["profile_comment"] or "").strip()
     head_lines, tail_lines = _build_school_profile_sections(
         login,
         profile,
         profile_url,
         show_coins=True,
     )
-    lines = [*head_lines, "", ""]
-    lines.extend(_build_peer_card_lines(user))
+    lines: list[str] = []
+    if comment:
+        lines.append(f"<i>{html.escape(comment)}</i>")
+        lines.append("")
+    lines.extend([*head_lines, "", ""])
+    lines.extend(_build_peer_card_lines(user, include_comment=False))
     lines.extend(tail_lines)
     lines.append(PEER_CARD_PHOTO_YES if has_photo else PEER_CARD_PHOTO_NO)
     if user["pending_profile_photo_file_id"]:
@@ -228,14 +233,19 @@ def render_full_peer_card_text(
     *,
     show_coins: bool = False,
 ) -> str:
+    comment = (user["profile_comment"] or "").strip()
     head_lines, tail_lines = _build_school_profile_sections(
         login,
         profile,
         profile_url,
         show_coins=show_coins,
     )
-    lines = [*head_lines, ""]
-    lines.extend(render_peer_card_text(user).splitlines())
+    lines: list[str] = []
+    if comment:
+        lines.append(f"<i>{html.escape(comment)}</i>")
+        lines.append("")
+    lines.extend([*head_lines, ""])
+    lines.extend(_build_peer_card_lines(user, include_comment=False))
     lines.extend(tail_lines)
     return "\n".join(lines)
 
