@@ -7,11 +7,15 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ..command_catalog import render_cabinet_help
 from ..config import Config
 from ..db import UserRepo
+from ..db.s21_cache_repo import S21CacheRepo
 from ..db.invite_code_repo import InviteCodeRepo
 from ..keyboards import (
     cabinet_back_kb,
@@ -44,7 +48,11 @@ from ..strings import (
     PEER_CARD_PHOTO_REMOVED,
     PEER_CARD_PHOTO_SAVED,
     PROFILE_ERROR,
-    PROFILE_LOADING,
+    WHERE_IN_CAMPUS,
+    WHERE_NOT_IN_CAMPUS,
+    WHERE_ERROR,
+    PEER_CARD_NOT_FOUND,
+    tg_mention,
 )
 from ..utils.branding import build_profile_url
 from ..utils.profile import (
@@ -52,10 +60,13 @@ from ..utils.profile import (
     can_send_text_as_photo_caption,
     fit_text_for_photo_caption,
     normalize_preferred_contact,
+    render_full_peer_card_text,
+    render_profile_text,
     render_peer_card_editor_text,
 )
 from ..utils.states import ProfileCardFSM
 from ..utils.telegram import safe_callback_answer, send_message_with_topic, send_photo_with_topic
+from .where import _find_best_project_match, _project_display_name
 
 logger = logging.getLogger(__name__)
 router = Router(name="cabinet")
@@ -65,6 +76,258 @@ router.callback_query.filter(F.message.chat.type == "private")
 _PROFILE_CARD_COMMENT_LIMIT = 500
 _PROFILE_CARD_CONTACTS = {"tg", "max", "rocket"}
 _PROFILE_CARD_MAX_LINK_PREFIXES = ("http://", "https://")
+_CABINET_COMMAND_INPUT_HINTS: dict[str, str] = {
+    "where": "Введите логин участника (например: <code>kylaknap</code>).",
+    "peer": "Введите логин участника (например: <code>kylaknap</code>).",
+    "peers": "Введите название или код проекта (например: <code>DSB7</code>).",
+    "logtime": "Введите логин участника (например: <code>kylaknap</code>).",
+}
+
+
+class CabinetCommandsFSM(StatesGroup):
+    waiting_input = State()
+
+
+def _scope_allows_private(scope: str) -> bool:
+    return scope in {"PRIVATE", "BOTH"}
+
+
+def _commands_section_text(config: Config) -> str:
+    commands_without_input = [
+        "• <b>Без параметров:</b> профиль, мой логтайм, топ, в кампусе, мероприятия",
+    ]
+    commands_with_input = [
+        "• <b>С вводом:</b> where, пир, пиры, логтайм по логину",
+    ]
+    lines = [
+        "❓ <b>Команды</b>\n",
+        "Нажмите кнопку, чтобы выполнить аналог команды прямо из меню.",
+        "",
+    ]
+    lines.extend(commands_without_input)
+    lines.extend(commands_with_input)
+    lines.append("")
+    lines.append("Текущий текстовый справочник:")
+    lines.append(render_cabinet_help(config))
+    return "\n".join(lines)
+
+
+def _cabinet_commands_kb(config: Config) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="👤 /profile", callback_data="cabinet:cmd:profile")
+    builder.button(text="🕐 /логтайм (мой)", callback_data="cabinet:cmd:logtime_me")
+    if _scope_allows_private(config.cmd_where_scope):
+        builder.button(text="🖥 /where", callback_data="cabinet:cmd_input:where")
+    if _scope_allows_private(config.cmd_peer_scope):
+        builder.button(text="🪪 /пир", callback_data="cabinet:cmd_input:peer")
+    if _scope_allows_private(config.cmd_peers_scope):
+        builder.button(text="👥 /пиры", callback_data="cabinet:cmd_input:peers")
+    if _scope_allows_private(config.cmd_logtime_scope):
+        builder.button(text="🕐 /логтайм (логин)", callback_data="cabinet:cmd_input:logtime")
+    if _scope_allows_private(config.cmd_top_scope):
+        builder.button(text="🏆 /топ", callback_data="cabinet:cmd:top")
+    if _scope_allows_private(config.cmd_incampus_scope):
+        builder.button(text="🏙 /вкампусе", callback_data="cabinet:cmd:incampus")
+    if _scope_allows_private(config.cmd_events_scope):
+        builder.button(text="📅 /мероприятия", callback_data="cabinet:cmd:events")
+    builder.button(text="⬅️ Назад", callback_data="cabinet:home")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def _cabinet_cmd_back_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="⬅️ К командам", callback_data="cabinet:help"))
+    return builder.as_markup()
+
+
+def _cabinet_cmd_home_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🏠 На главную", callback_data="cabinet:home"))
+    return builder.as_markup()
+
+
+def _cabinet_cmd_input_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="cabinet:cmd_input_cancel"))
+    return builder.as_markup()
+
+
+async def _edit_callback_message(
+    callback: CallbackQuery,
+    *,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None,
+    disable_web_page_preview: bool = True,
+) -> None:
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=disable_web_page_preview,
+            reply_markup=reply_markup,
+        )
+    except TelegramBadRequest as exc:
+        error_text = str(exc).lower()
+        if "message is not modified" in error_text:
+            return
+        await callback.message.answer(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=disable_web_page_preview,
+            reply_markup=reply_markup,
+        )
+        await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+
+
+async def _run_profile_text(user, s21: S21Client, config: Config) -> str:
+    login = user["school_login"]
+    profile = await s21.get_full_profile(login)
+    return render_profile_text(login, profile, build_profile_url(login, config))
+
+
+async def _run_logtime_text(login: str, s21: S21Client) -> str:
+    hours = await s21.get_logtime(login)
+    if hours is None:
+        return f"📭 Данные о логтайме для <code>{login}</code> недоступны."
+    h = int(hours)
+    m = int((hours - h) * 60)
+    time_str = f"{h} ч. {m} мин." if m else f"{h} ч."
+    return (
+        "🕐 <b>Среднее время в кампусе</b>\n\n"
+        f"👤 <code>{login}</code>\n"
+        f"📊 За неделю: <b>{time_str}</b>"
+    )
+
+
+async def _run_where_text(login: str, s21: S21Client) -> str:
+    data = await s21.get_workstation(login)
+    if not data:
+        return WHERE_NOT_IN_CAMPUS.format(login=login)
+    cluster = data.get("clusterName") or data.get("cluster") or data.get("cluster_name") or data.get("hostName") or ""
+    row = data.get("row") or data.get("workstationRow") or ""
+    number = data.get("number") or data.get("workstationNumber") or data.get("num") or ""
+    if not cluster and not row and not number:
+        return WHERE_NOT_IN_CAMPUS.format(login=login)
+    seat = f"{cluster} {row}{number}".strip()
+    return WHERE_IN_CAMPUS.format(login=login, seat=seat)
+
+
+async def _run_peers_text(query: str, s21: S21Client) -> str:
+    approved = await UserRepo.get_approved_users()
+    matches: list[tuple[str, int, str | None, str | None, dict, float]] = []
+    for user in approved:
+        login = user["school_login"]
+        if not login:
+            continue
+        profile = await S21CacheRepo.get(login)
+        all_projects = list((profile or {}).get("active_projects") or [])
+        if not all_projects:
+            all_projects = await s21.get_active_projects(login)
+        best_project, best_score = _find_best_project_match(query, all_projects)
+        if best_project and best_score >= 0.65:
+            matches.append((login, user["tg_id"], user["tg_username"], user["tg_name"], best_project, best_score))
+    if not matches:
+        return f"📭 Никто из участников не работает над <code>{query}</code>."
+    best_match_name = _project_display_name(max(matches, key=lambda item: item[5])[4], query)
+    mentions = [
+        tg_mention(tg_id_m, login, tg_username=tg_username_m, tg_name=tg_name_m)
+        for login, tg_id_m, tg_username_m, tg_name_m, _, _ in sorted(matches, key=lambda item: item[0])
+    ]
+    return (
+        f"👥 <b>Работают над «{best_match_name}»</b> — {len(matches)}\n\n"
+        + ", ".join(mentions)
+    )
+
+
+async def _run_top_text(caller_tg_id: int) -> str:
+    approved = await UserRepo.get_approved_users()
+    scores: list[tuple[str, int, int, str]] = []
+    for user in approved:
+        login = user["school_login"]
+        if not login:
+            continue
+        data = await S21CacheRepo.get(login)
+        if not data:
+            continue
+        info = data.get("info") or {}
+        coalition = (data.get("coalition") or {}).get("name") or ""
+        xp = info.get("expValue", 0) or 0
+        level = info.get("level", 0) or 0
+        scores.append((login, xp, level, coalition))
+    if not scores:
+        return "📭 Нет данных. Кэш ещё не заполнен — попробуйте позже."
+    scores.sort(key=lambda x: x[1], reverse=True)
+    medals = ["🥇", "🥈", "🥉"] + ["4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+    login_to_user = {u["school_login"]: u for u in approved if u["school_login"]}
+
+    def fmt_row(i: int, login: str, xp: int, level: int, coalition: str) -> str:
+        medal = medals[i] if i < len(medals) else f"{i + 1}."
+        xp_str = f"{xp:,}".replace(",", " ")
+        tribe = f" · {coalition}" if coalition else ""
+        user = login_to_user.get(login)
+        name = tg_mention(
+            user["tg_id"] if user else None,
+            login,
+            tg_username=user["tg_username"] if user else None,
+            tg_name=user["tg_name"] if user else None,
+        )
+        return f"{medal} {name}{tribe} — {xp_str} XP (ур. {level})"
+
+    lines = [f"🏆 <b>Топ-10 из {len(scores)}</b>\n"]
+    for i, (login, xp, level, coalition) in enumerate(scores[:10]):
+        lines.append(fmt_row(i, login, xp, level, coalition))
+    caller = await UserRepo.get_by_tg_id(caller_tg_id)
+    caller_login = caller["school_login"] if caller else None
+    if caller_login:
+        caller_pos = next((i for i, (lg, *_) in enumerate(scores) if lg == caller_login), None)
+        if caller_pos is not None and caller_pos >= 10:
+            login, xp, level, coalition = scores[caller_pos]
+            lines.append("")
+            lines.append("— — —")
+            lines.append(fmt_row(caller_pos, login, xp, level, coalition))
+    return "\n".join(lines)
+
+
+async def _run_incampus_text(config: Config, s21: S21Client) -> str:
+    approved = await UserRepo.get_approved_users()
+    approved_logins = {u["school_login"] for u in approved if u["school_login"]}
+    clusters = await s21.get_campus_clusters(config.s21_campus_id)
+    current: dict[str, str] = {}
+    for cluster in clusters:
+        cluster_id = cluster.get("id")
+        cluster_name = cluster.get("name") or str(cluster_id)
+        seats = await s21.get_cluster_map(cluster_id)
+        for seat in seats:
+            login = seat.get("login")
+            if login and login in approved_logins:
+                row = seat.get("row", "")
+                number = seat.get("number", "")
+                current[login] = f"{cluster_name} {row}{number}".strip()
+    if not current:
+        return "🏙 Сейчас никого нет в кампусе."
+    lines = [f"🖥 <b>В кампусе сейчас — {len(current)}</b>\n"]
+    by_cluster: dict[str, list[str]] = {}
+    for login, seat in sorted(current.items(), key=lambda x: x[1]):
+        cluster = seat.split()[0] if seat else "?"
+        by_cluster.setdefault(cluster, []).append(f"  <code>{login}</code> — {seat}")
+    for cluster_name, entries in by_cluster.items():
+        lines.append(f"<b>{cluster_name}:</b>")
+        lines.extend(entries)
+    return "\n".join(lines)
+
+
+async def _run_events_text(config: Config, s21: S21Client) -> str:
+    from datetime import datetime, timedelta, timezone
+    from ..services.events import _format_event
+
+    now = datetime.now(timezone.utc)
+    to = now + timedelta(days=30)
+    events = await s21.get_events(now.strftime("%Y-%m-%dT%H:%M:%SZ"), to.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    if not events:
+        return "📭 Ближайших мероприятий не найдено."
+    blocks = [_format_event(event, config) for event in events[:5]]
+    return "\n\n——————\n\n".join(blocks)
 
 
 def _is_admin(tg_id: int, config: Config) -> bool:
@@ -628,7 +891,239 @@ async def cb_cabinet_mycodes(callback: CallbackQuery, config: Config) -> None:
 @router.callback_query(F.data == "cabinet:help")
 async def cb_cabinet_help(callback: CallbackQuery, config: Config) -> None:
     await safe_callback_answer(callback)
-    await _edit_cabinet_card(callback, render_cabinet_help(config), config, disable_web_page_preview=True)
+    await _edit_callback_message(
+        callback,
+        text=_commands_section_text(config),
+        reply_markup=_cabinet_commands_kb(config),
+        disable_web_page_preview=True,
+    )
+
+
+@router.callback_query(F.data.startswith("cabinet:cmd_input:"))
+async def cb_cabinet_command_input(callback: CallbackQuery, state: FSMContext) -> None:
+    command_key = callback.data.rsplit(":", 1)[-1]
+    hint = _CABINET_COMMAND_INPUT_HINTS.get(command_key)
+    if not hint:
+        await safe_callback_answer(callback, "Неизвестная команда.", show_alert=True)
+        return
+    await state.set_state(CabinetCommandsFSM.waiting_input)
+    prompt = await callback.message.answer(
+        f"✏️ <b>Введите данные для команды</b>\n\n{hint}",
+        parse_mode="HTML",
+        reply_markup=_cabinet_cmd_input_kb(),
+    )
+    await state.update_data(command_key=command_key, prompt_message_id=prompt.message_id)
+    await safe_callback_answer(callback)
+
+
+@router.callback_query(F.data == "cabinet:cmd_input_cancel")
+async def cb_cabinet_command_input_cancel(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+    await safe_callback_answer(callback, "Ввод отменён")
+
+
+@router.callback_query(F.data.startswith("cabinet:cmd:"))
+async def cb_cabinet_quick_commands(callback: CallbackQuery, config: Config, s21: S21Client) -> None:
+    assert callback.from_user is not None
+    user = await _require_approved_user(callback.from_user.id)
+    if not user:
+        await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
+        return
+
+    command = callback.data.rsplit(":", 1)[-1]
+    try:
+        if command == "profile":
+            if not _scope_allows_private(config.cmd_profile_scope):
+                await safe_callback_answer(callback, "Команда отключена в личке.", show_alert=True)
+                return
+            text = await _run_profile_text(user, s21, config)
+        elif command == "logtime_me":
+            if not _scope_allows_private(config.cmd_logtime_scope):
+                await safe_callback_answer(callback, "Команда отключена в личке.", show_alert=True)
+                return
+            if not user["school_login"]:
+                await safe_callback_answer(callback, "Логин не найден.", show_alert=True)
+                return
+            text = await _run_logtime_text(user["school_login"], s21)
+        elif command == "top":
+            if not _scope_allows_private(config.cmd_top_scope):
+                await safe_callback_answer(callback, "Команда отключена в личке.", show_alert=True)
+                return
+            text = await _run_top_text(callback.from_user.id)
+        elif command == "incampus":
+            if not _scope_allows_private(config.cmd_incampus_scope):
+                await safe_callback_answer(callback, "Команда отключена в личке.", show_alert=True)
+                return
+            text = await _run_incampus_text(config, s21)
+        elif command == "events":
+            if not _scope_allows_private(config.cmd_events_scope):
+                await safe_callback_answer(callback, "Команда отключена в личке.", show_alert=True)
+                return
+            text = await _run_events_text(config, s21)
+        else:
+            await safe_callback_answer(callback, "Неизвестная команда.", show_alert=True)
+            return
+    except Exception as exc:
+        await safe_callback_answer(callback)
+        await _edit_callback_message(
+            callback,
+            text=f"⚠️ Ошибка выполнения команды: <code>{exc}</code>",
+            reply_markup=_cabinet_cmd_back_kb(),
+            disable_web_page_preview=True,
+        )
+        return
+
+    await safe_callback_answer(callback)
+    await _edit_callback_message(
+        callback,
+        text=text,
+        reply_markup=_cabinet_cmd_back_kb(),
+        disable_web_page_preview=True,
+    )
+
+
+@router.message(CabinetCommandsFSM.waiting_input)
+async def msg_cabinet_command_input(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    config: Config,
+    s21: S21Client,
+) -> None:
+    assert message.from_user is not None
+    user = await _require_approved_user(message.from_user.id)
+    if not user:
+        await state.clear()
+        await message.answer(ONLY_APPROVED)
+        return
+
+    data = await state.get_data()
+    command_key = data.get("command_key")
+    prompt_message_id = data.get("prompt_message_id")
+    raw_value = (message.text or "").strip()
+    prompt_hint = _CABINET_COMMAND_INPUT_HINTS.get(command_key, "Введите значение.")
+    normalized_login = raw_value.lower()
+
+    if not command_key or not raw_value:
+        if prompt_message_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=prompt_message_id,
+                    text=f"❌ Некорректный ввод.\n\n{prompt_hint}",
+                    parse_mode="HTML",
+                    reply_markup=_cabinet_cmd_input_kb(),
+                )
+            except Exception:
+                pass
+        await _delete_message_safe(bot, message.chat.id, message.message_id)
+        return
+
+    try:
+        if command_key == "where":
+            if not _scope_allows_private(config.cmd_where_scope):
+                raise ValueError("Команда отключена в личке.")
+            if not normalized_login.replace("-", "").replace("_", "").isalnum():
+                raise ValueError("Логин должен содержать только буквы, цифры, '-' и '_'.")
+            result_text = await _run_where_text(normalized_login, s21)
+            await message.answer(result_text, parse_mode="HTML", reply_markup=_cabinet_cmd_home_kb())
+        elif command_key == "peer":
+            if not _scope_allows_private(config.cmd_peer_scope):
+                raise ValueError("Команда отключена в личке.")
+            if not normalized_login.replace("-", "").replace("_", "").isalnum():
+                raise ValueError("Логин должен содержать только буквы, цифры, '-' и '_'.")
+            login = normalized_login
+            target_user = await UserRepo.get_approved_by_school_login(login)
+            if not target_user:
+                await message.answer(PEER_CARD_NOT_FOUND.format(login=login), parse_mode="HTML", reply_markup=_cabinet_cmd_home_kb())
+            else:
+                profile = await get_or_refresh(login, s21)
+                if not profile:
+                    raise ValueError("Профиль не найден.")
+                card_text = render_full_peer_card_text(
+                    login,
+                    profile,
+                    build_profile_url(login, config),
+                    target_user,
+                    show_coins=user["tg_id"] == target_user["tg_id"],
+                )
+                if target_user["profile_photo_file_id"] and can_send_text_as_photo_caption(card_text):
+                    await message.answer_photo(
+                        photo=target_user["profile_photo_file_id"],
+                        caption=fit_text_for_photo_caption(card_text),
+                        parse_mode="HTML",
+                        reply_markup=_cabinet_cmd_home_kb(),
+                    )
+                elif target_user["profile_photo_file_id"]:
+                    await message.answer_photo(photo=target_user["profile_photo_file_id"])
+                    await message.answer(
+                        card_text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=_cabinet_cmd_home_kb(),
+                    )
+                else:
+                    await message.answer(
+                        card_text,
+                        parse_mode="HTML",
+                        disable_web_page_preview=True,
+                        reply_markup=_cabinet_cmd_home_kb(),
+                    )
+        elif command_key == "peers":
+            if not _scope_allows_private(config.cmd_peers_scope):
+                raise ValueError("Команда отключена в личке.")
+            if len(raw_value) < 2:
+                raise ValueError("Укажите не менее 2 символов названия проекта.")
+            text = await _run_peers_text(raw_value.lower(), s21)
+            await message.answer(
+                text,
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=_cabinet_cmd_home_kb(),
+            )
+        elif command_key == "logtime":
+            if not _scope_allows_private(config.cmd_logtime_scope):
+                raise ValueError("Команда отключена в личке.")
+            if not normalized_login.replace("-", "").replace("_", "").isalnum():
+                raise ValueError("Логин должен содержать только буквы, цифры, '-' и '_'.")
+            text = await _run_logtime_text(normalized_login, s21)
+            await message.answer(text, parse_mode="HTML", reply_markup=_cabinet_cmd_home_kb())
+        else:
+            raise ValueError("Неизвестная команда.")
+    except ValueError as exc:
+        if prompt_message_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=prompt_message_id,
+                    text=f"❌ {exc}\n\n{prompt_hint}",
+                    parse_mode="HTML",
+                    reply_markup=_cabinet_cmd_input_kb(),
+                )
+            except Exception:
+                pass
+        await _delete_message_safe(bot, message.chat.id, message.message_id)
+        return
+    except Exception as exc:
+        error_text = WHERE_ERROR if command_key == "where" else f"⚠️ Ошибка выполнения команды: <code>{exc}</code>"
+        if prompt_message_id:
+            try:
+                await bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=prompt_message_id,
+                    text=f"{error_text}\n\n{prompt_hint}",
+                    parse_mode="HTML",
+                    reply_markup=_cabinet_cmd_input_kb(),
+                )
+            except Exception:
+                pass
+        await _delete_message_safe(bot, message.chat.id, message.message_id)
+        return
+
+    await _delete_message_safe(bot, message.chat.id, message.message_id)
+    await _delete_message_safe(bot, message.chat.id, prompt_message_id)
+    await state.clear()
 
 
 @router.message(ProfileCardFSM.waiting_photo, F.photo)
