@@ -1,7 +1,12 @@
-.env
-.env.*
+.env*
 data/
 .git/
+.github/
 .codebase-memory/
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+tests/
