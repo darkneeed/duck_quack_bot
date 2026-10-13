@@ -239,11 +239,23 @@ class S21Client:
             return None
 
     async def get_campus_participants(self, campus_id: str, limit: int = 1000) -> list[str]:
-        data = await self._get(f"/campuses/{campus_id}/participants?limit={limit}")
-        if not data:
-            return []
-        participants = data.get("participants", []) if isinstance(data, dict) else data
-        return [p if isinstance(p, str) else p.get("login", "") for p in participants]
+        offset = 0
+        all_participants: list[str] = []
+        while True:
+            data = await self._get(f"/campuses/{campus_id}/participants?limit={limit}&offset={offset}")
+            if not data:
+                break
+            participants = data.get("participants", []) if isinstance(data, dict) else data
+            if not participants:
+                break
+            for p in participants:
+                login = p if isinstance(p, str) else p.get("login", "")
+                if login:
+                    all_participants.append(login)
+            if len(participants) < limit:
+                break
+            offset += len(participants)
+        return all_participants
 
     async def get_campus_clusters(self, campus_id: str) -> list[dict]:
         data = await self._get(f"/campuses/{campus_id}/clusters")

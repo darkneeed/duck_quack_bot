@@ -421,24 +421,28 @@ async def cmd_top(message: Message, config: Config) -> None:
         data = await S21CacheRepo.get(login)
         if not data:
             continue
-        info      = data.get("info") or {}
+        info = data.get("info") or {}
+        parallel = info.get("parallelName") or ""
+        if parallel != "Core program":
+            continue
+        status = (info.get("status") or "").upper()
+        if status != "ACTIVE":
+            continue
         coalition = (data.get("coalition") or {}).get("name") or ""
         xp        = info.get("expValue", 0) or 0
         level     = info.get("level", 0) or 0
         scores.append((login, xp, level, coalition))
 
     if not scores:
-        await message.reply("📭 Нет данных. Кэш ещё не заполнен — попробуйте позже.")
+        await message.reply("Нет данных. Кэш ещё не заполнен — попробуйте позже.")
         return
 
     scores.sort(key=lambda x: x[1], reverse=True)
 
-    medals = ["🥇", "🥈", "🥉"] + ["4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
-
     login_to_user = {u["school_login"]: u for u in approved if u["school_login"]}
 
     def fmt_row(i: int, login: str, xp: int, level: int, coalition: str) -> str:
-        medal  = medals[i] if i < len(medals) else f"{i+1}."
+        rank   = f"{i+1}."
         xp_str = f"{xp:,}".replace(",", " ")
         tribe  = f" · {coalition}" if coalition else ""
         user   = login_to_user.get(login)
@@ -448,9 +452,9 @@ async def cmd_top(message: Message, config: Config) -> None:
             tg_username=user["tg_username"] if user else None,
             tg_name=user["tg_name"] if user else None,
         )
-        return f"{medal} {name}{tribe} — {xp_str} XP (ур. {level})"
+        return f"{rank} {name}{tribe} — {xp_str} XP (ур. {level})"
 
-    lines = [f"🏆 <b>Топ-10 из {len(scores)}</b>\n"]
+    lines = [f"<b>Топ-10 из {len(scores)} (активная основа)</b>\n"]
     for i, (login, xp, level, coalition) in enumerate(scores[:10]):
         lines.append(fmt_row(i, login, xp, level, coalition))
 

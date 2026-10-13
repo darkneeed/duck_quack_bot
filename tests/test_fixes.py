@@ -565,3 +565,109 @@ async def test_bounded_set_extended_features():
     assert list(bs_copy) == [2, 3, 4, 5]
 
 
+@pytest.mark.asyncio
+async def test_digest_counts_and_xp_filtering(temp_db):
+    from s21_bot.services.digest import _send_digest
+
+    # Setup participants:
+    # 1: Core, ACTIVE, 1000 XP
+    # 2: Core, FROZEN, 5000 XP (high XP but frozen, should NOT be in XP leaderboard)
+    # 3: Core, TEMPORARY_BLOCKING, 500 XP
+    # 4: Intensive/Pool, ACTIVE, 9000 XP (not Core, should be completely ignored)
+    await S21CacheRepo.set("p_core_active", {
+        "info": {"parallelName": "Core program", "status": "ACTIVE", "expValue": 1000}
+    }, "2026-10-13 12:00:00")
+    await S21CacheRepo.set("p_core_frozen", {
+        "info": {"parallelName": "Core program", "status": "FROZEN", "expValue": 5000}
+    }, "2026-10-13 12:00:00")
+    await S21CacheRepo.set("p_core_blocked", {
+        "info": {"parallelName": "Core program", "status": "TEMPORARY_BLOCKING", "expValue": 500}
+    }, "2026-10-13 12:00:00")
+    await S21CacheRepo.set("p_pool_active", {
+        "info": {"parallelName": "Intensive Parallel 72", "status": "ACTIVE", "expValue": 9000}
+    }, "2026-10-13 12:00:00")
+
+    bot = MagicMock()
+    s21 = MagicMock()
+    s21.get_campus_clusters = AsyncMock(return_value=[])
+
+    config = MagicMock()
+    config.community_chat_id = -1001
+    config.digest_topic_id = 123
+    config.s21_campus_id = "test-campus"
+    config.display_timezone = "Europe/Moscow"
+
+    with patch("s21_bot.services.digest.send_message_with_topic", AsyncMock(return_value=True)) as mock_send:
+        await _send_digest(bot, s21, config)
+
+        assert mock_send.called
+        text = mock_send.call_args[1]["text"]
+
+        # Main count should be 3 (all 3 Core participants)
+        assert "Всего на основе:</b> 3 чел." in text
+        # Active count should be 1
+        assert "Из них активно учатся:</b> 1 чел." in text
+        # Frozen/blocking count should be 2
+        assert "В заморозке / академе:</b> 2 чел." in text
+
+        # Top XP should contain p_core_active but NOT p_core_frozen and NOT p_pool_active
+        assert "p_core_active" in text
+        assert "p_core_frozen" not in text
+        assert "p_pool_active" not in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_top_filters_active_core(temp_db):
+    from s21_bot.handlers.chat_moderation import cmd_top
+
+    await UserRepo.upsert_basic(101, "User Active")
+    await UserRepo.approve(101, 1, "Admin", "u_active", "test", "link", "now")
+    await S21CacheRepo.set("u_active", {
+        "info": {"parallelName": "Core program", "status": "ACTIVE", "expValue": 3000, "level": 5}
+    }, "2026-10-13 12:00:00")
+
+    await UserRepo.upsert_basic(102, "User Frozen")
+    await UserRepo.approve(102, 1, "Admin", "u_frozen", "test", "link", "now")
+    await S21CacheRepo.set("u_frozen", {
+        "info": {"parallelName": "Core program", "status": "FROZEN", "expValue": 9000, "level": 10}
+    }, "2026-10-13 12:00:00")
+
+    message = MagicMock()
+    message.chat = MagicMock(type="supergroup")
+    message.from_user = MagicMock(id=101)
+    message.reply = AsyncMock()
+
+    config = MagicMock()
+    config.cmd_top_scope = "PUBLIC"
+
+    await cmd_top(message, config)
+
+    assert message.reply.called
+    reply_text = message.reply.call_args[0][0]
+
+    assert "u_active" in reply_text
+    assert "u_frozen" not in reply_text
+    assert "Топ-10 из 1 (активная основа)" in reply_text
+
+
+@pytest.mark.asyncio
+async def test_get_campus_participants_pagination():
+    from s21_bot.services.s21_api import S21Client
+
+    client = S21Client("user", "pass")
+
+    # Mock _get to return 2 pages then empty
+    async def mock_get(path):
+        if "offset=0" in path:
+            return {"participants": ["user1", "user2"]}
+        if "offset=2" in path:
+            return {"participants": ["user3"]}
+        return {"participants": []}
+
+    client._get = AsyncMock(side_effect=mock_get)
+
+    parts = await client.get_campus_participants("camp-id", limit=2)
+    assert parts == ["user1", "user2", "user3"]
+
+
+

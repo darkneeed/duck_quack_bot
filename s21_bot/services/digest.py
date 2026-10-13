@@ -66,10 +66,11 @@ async def _send_digest(bot: Bot, s21: S21Client, config: Config) -> None:
         if parallel != "Core program":
             continue
         main_count += 1
-        if (info.get("status") or "").upper() == "ACTIVE":
+        is_active = (info.get("status") or "").upper() == "ACTIVE"
+        if is_active:
             active_count += 1
-        xp = info.get("expValue", 0) or 0
-        xp_data.append((login, xp))
+            xp = info.get("expValue", 0) or 0
+            xp_data.append((login, xp))
 
     xp_data.sort(key=lambda x: x[1], reverse=True)
     top21 = xp_data[:9] + (xp_data[20:21] if len(xp_data) >= 21 else [])
@@ -85,22 +86,23 @@ async def _send_digest(bot: Bot, s21: S21Client, config: Config) -> None:
     except Exception as exc:
         logger.warning("Digest: cluster fetch failed: %s", exc)
 
+    frozen_count = max(main_count - active_count, 0)
     now_str = format_now_local(config, "%d.%m.%Y")
     lines = [
-        f"📊 <b>Еженедельный дайджест кампуса</b> — {now_str}",
+        f"<b>Еженедельный дайджест кампуса</b> — {now_str}",
         "",
-        f"👥 <b>Участников основы:</b> {main_count}",
-        f"✅ <b>Активных:</b> {active_count}",
-        f"🖥 <b>Сейчас в кампусе:</b> {len(online_logins)}",
+        f"• <b>Всего на основе:</b> {main_count} чел.",
+        f"• <b>Из них активно учатся:</b> {active_count} чел.",
+        f"• <b>В заморозке / академе:</b> {frozen_count} чел.",
+        f"• <b>Сейчас за рабочими местами:</b> {len(online_logins)} чел.",
         "",
-        "🏆 <b>Топ по XP (основа):</b>",
+        "<b>Топ по XP (активная основа):</b>",
     ]
     for idx, (login, xp) in enumerate(top21):
         place = idx + 1 if idx < 9 else 21
         if idx == 9:
             lines.append("…")
-        medal = {1: "🥇", 2: "🥈", 3: "🥉"}.get(place, f"{place}.")
-        lines.append(f"{medal} <code>{login}</code> — {xp:,} XP")
+        lines.append(f"{place}. <code>{login}</code> — {xp:,} XP")
 
     sent = await send_message_with_topic(
         bot,
@@ -112,4 +114,4 @@ async def _send_digest(bot: Bot, s21: S21Client, config: Config) -> None:
         parse_mode="HTML",
     )
     if sent is not None:
-        logger.info("Digest sent: %d participants, top10 computed", len(entries))
+        logger.info("Digest sent: %d participants, top computed", len(entries))
