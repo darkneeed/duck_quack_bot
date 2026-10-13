@@ -8,12 +8,13 @@ from aiogram import Bot
 
 from ..config import Config
 from ..db.models import get_db
+from ..utils.collections import BoundedSet
 from ..utils.telegram import send_message_with_topic
 
 logger = logging.getLogger(__name__)
 
 _CHECK_INTERVAL = 900
-_alerted_app_ids: set[int] = set()
+_alerted_app_ids: BoundedSet[int] = BoundedSet(maxsize=10_000)
 
 
 async def run_pending_alert(bot: Bot, config: Config) -> None:

@@ -28,7 +28,8 @@ class RocketChatClient:
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
-        self._session = aiohttp.ClientSession()
+        timeout = aiohttp.ClientTimeout(total=15.0, connect=5.0)
+        self._session = aiohttp.ClientSession(timeout=timeout)
 
     async def close(self) -> None:
         if self._session:

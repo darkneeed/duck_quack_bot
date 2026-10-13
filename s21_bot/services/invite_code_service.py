@@ -114,7 +114,9 @@ async def attach_invite_code_to_request(
     code_id: int = row["id"]
     now = now_iso()
 
-    await InviteCodeRepo.mark_used(code_id, candidate_user_id, now)
+    marked = await InviteCodeRepo.mark_used(code_id, candidate_user_id, now)
+    if not marked:
+        return AttachResult.INVALID
     await InviteCodeRepo.attach_to_application(app_id, code_id)
 
     new_used_count = row["used_count"] + 1

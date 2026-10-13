@@ -57,6 +57,7 @@ async def main() -> None:
 
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(BanCheckMiddleware())
+    dp.callback_query.middleware(BanCheckMiddleware())
     dp["config"] = config
     dp["s21"] = s21_client
     dp["rc"] = rc_client

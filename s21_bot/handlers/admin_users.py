@@ -19,6 +19,7 @@ from .admin_common import IsModeratorInModChat
 
 logger = logging.getLogger(__name__)
 router = Router(name="admin_users")
+_background_tasks: set[asyncio.Task] = set()
 
 
 async def _warm_profile_cache(login: str, s21: S21Client) -> None:
@@ -206,7 +207,7 @@ async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client
     terminal = {"approved", "rejected", "banned"}
     if app["status"] in terminal:
         await message.reply(
-            f"⚠️ Заявка #{app_id} уже в статусе <b>{app['status']}</b>.",
+            f"Заявка #{app_id} уже в статусе <b>{app['status']}</b>.",
             parse_mode="HTML",
         )
         return
@@ -216,6 +217,11 @@ async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client
     moderator_name = message.from_user.full_name or str(moderator_id)
     if message.from_user.username:
         moderator_name += f" (@{message.from_user.username})"
+
+    claimed = await ApplicationRepo.try_claim_and_approve(app_id, moderator_id, moderator_name, now)
+    if not claimed:
+        await message.reply(f"Заявка #{app_id} уже обработана другим модератором.", parse_mode="HTML")
+        return
 
     from ..services import create_one_time_invite
 
@@ -227,10 +233,10 @@ async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client
             name=f"s21:{app['school_login']}",
         )
     except Exception as exc:
-        await message.reply(f"🚨 Ошибка создания ссылки: <code>{exc}</code>", parse_mode="HTML")
+        await ApplicationRepo.set_status(app_id, app["status"])
+        await message.reply(f"Ошибка создания ссылки: <code>{exc}</code>", parse_mode="HTML")
         return
 
-    await ApplicationRepo.approve(app_id, moderator_id, moderator_name, now)
     await UserRepo.approve(
         tg_id=app["tg_id"],
         moderator_id=moderator_id,
@@ -241,7 +247,9 @@ async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client
         decision_date=now,
     )
     if app["school_login"]:
-        asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
+        task = asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     try:
         await bot.send_message(chat_id=app["tg_id"], text=format_invite_message(invite_link, config))
@@ -321,16 +329,17 @@ async def cmd_guest_invite(message: Message, bot: Bot, config: Config, s21: S21C
 
     now = now_iso()
     await UserRepo.upsert_basic(target_tg_id, f"Guest:{school_login}")
-    from ..db.models import get_db
 
-    async with get_db() as db:
-        await db.execute(
-            "UPDATE users SET status='approved', school_login=?, coalition=?, "
-            "invite_link=?, is_guest=1, home_campus=?, decision_date=?, "
-            "moderator_id=?, moderator_name=? WHERE tg_id=?",
-            (school_login, coalition, invite_link, campus, now, message.from_user.id, message.from_user.full_name, target_tg_id),
-        )
-        await db.commit()
+    await UserRepo.approve_as_guest(
+        tg_id=target_tg_id,
+        school_login=school_login,
+        coalition=coalition,
+        invite_link=invite_link,
+        home_campus=campus,
+        decision_date=now,
+        moderator_id=message.from_user.id,
+        moderator_name=message.from_user.full_name,
+    )
 
     await GuestInviteRepo.create(
         tg_id=target_tg_id,

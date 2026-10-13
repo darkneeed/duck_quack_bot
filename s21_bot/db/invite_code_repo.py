@@ -34,19 +34,20 @@ class InviteCodeRepo:
         code_id: int,
         used_by_user_id: int,
         used_at: str,
-    ) -> None:
+    ) -> bool:
         async with get_db() as db:
-            await db.execute(
+            cur = await db.execute(
                 """
                 UPDATE invite_codes
                 SET used_count       = used_count + 1,
                     used_by_user_id  = COALESCE(used_by_user_id, ?),
                     used_at          = COALESCE(used_at, ?)
-                WHERE id = ?
+                WHERE id = ? AND used_count < usage_limit AND is_active = 1
                 """,
                 (used_by_user_id, used_at, code_id),
             )
             await db.commit()
+            return cur.rowcount > 0
 
     @staticmethod
     async def deactivate(code_id: int) -> None:

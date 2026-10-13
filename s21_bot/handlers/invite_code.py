@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from aiogram import Bot, F, Router
@@ -10,6 +11,7 @@ from aiogram.types import Message
 
 from ..config import Config
 from ..db.invite_code_repo import InviteCodeRepo
+from ..db import UserRepo
 import io
 
 from ..strings import (
@@ -35,18 +37,29 @@ _PENDING_CODE_KEY = "pending_invite_code"
 
 
 @router.message(CommandStart(deep_link=True))
-async def cmd_start_with_code(message: Message, state: FSMContext) -> None:
+async def cmd_start_with_code(message: Message, state: FSMContext, config: Config) -> None:
     assert message.from_user is not None
     payload = (message.text or "").split(maxsplit=1)
     code = payload[1].strip().upper() if len(payload) > 1 else ""
 
-    if not code:
+    from .auth import _check_and_respond, _start_flow
+
+    if await _check_and_respond(message, state, config):
         return
 
-    result, _ = await validate_invite_code(code, message.from_user.id)
+    if not code:
+        await _start_flow(message, state, config)
+        return
+
+    result, row = await validate_invite_code(code, message.from_user.id)
     if result == ValidationResult.OK:
         await state.update_data(**{_PENDING_CODE_KEY: code})
-        await message.answer(INVITE_ACCEPTED_START.format(code=code, creator="администратора"), parse_mode="HTML")
+        creator_name = "администратора"
+        if row and row.get("creator_user_id"):
+            creator = await UserRepo.get_by_tg_id(row["creator_user_id"])
+            if creator:
+                creator_name = creator.get("tg_name") or (f"@{creator['school_login']}" if creator.get("school_login") else "администратора")
+        await message.answer(INVITE_ACCEPTED_START.format(code=code, creator=creator_name), parse_mode="HTML")
         logger.info(
             "Invite code stored in FSM: code=%s tg_id=%d",
             code, message.from_user.id,
@@ -57,6 +70,8 @@ async def cmd_start_with_code(message: Message, state: FSMContext) -> None:
             "\n\nВы можете продолжить оформление заявки без кода.",
             parse_mode="HTML",
         )
+
+    await _start_flow(message, state, config)
 
 
 async def apply_pending_invite_code(
@@ -156,7 +171,7 @@ async def cmd_gencode(message: Message, config: Config, bot: Bot) -> None:
     caption = INVITE_GENCODE_CAPTION.format(link=link)
 
     try:
-        qr_buf = _build_qr_image(link)
+        qr_buf = await asyncio.to_thread(_build_qr_image, link)
         from aiogram.types import BufferedInputFile
         await message.reply_photo(
             photo=BufferedInputFile(qr_buf.read(), filename=f"invite_{code}.png"),

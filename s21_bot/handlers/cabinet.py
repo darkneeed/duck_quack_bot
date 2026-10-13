@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 
@@ -850,7 +851,7 @@ async def cb_cabinet_gencode(callback: CallbackQuery, bot: Bot, config: Config) 
         link = build_bot_link(code, bot_info.username or "")
         text = INVITE_GENCODE_CAPTION.format(link=f"<code>{link}</code>")
         await _edit_cabinet_card(callback, text, config, disable_web_page_preview=True)
-        qr_buf = _build_qr_image(link)
+        qr_buf = await asyncio.to_thread(_build_qr_image, link)
         if qr_buf:
             await callback.message.answer_photo(
                 photo=BufferedInputFile(qr_buf.read(), filename=f"invite_{code}.png"),

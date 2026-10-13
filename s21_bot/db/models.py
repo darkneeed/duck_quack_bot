@@ -15,6 +15,10 @@ class _ConnectionContextManager:
     async def __aenter__(self) -> aiosqlite.Connection:
         self._conn = await aiosqlite.connect(self._path)
         self._conn.row_factory = aiosqlite.Row
+        await self._conn.execute("PRAGMA journal_mode = WAL;")
+        await self._conn.execute("PRAGMA busy_timeout = 5000;")
+        await self._conn.execute("PRAGMA foreign_keys = ON;")
+        await self._conn.execute("PRAGMA synchronous = NORMAL;")
         return self._conn
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -202,5 +206,47 @@ async def init_db() -> None:
                 PRIMARY KEY (chat_id, message_id)
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS s21_cache (
+                login       TEXT PRIMARY KEY,
+                data_json   TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS workstation_state (
+                login       TEXT PRIMARY KEY,
+                seat        TEXT,
+                updated_at  TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS moderators (
+                tg_id       INTEGER PRIMARY KEY,
+                tg_name     TEXT,
+                added_by    INTEGER NOT NULL,
+                added_at    TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS antispam_config (
+                id            INTEGER PRIMARY KEY CHECK (id = 1),
+                enabled       INTEGER NOT NULL DEFAULT 0,
+                msg_count     INTEGER NOT NULL DEFAULT 5,
+                window_secs   INTEGER NOT NULL DEFAULT 10,
+                mute_minutes  INTEGER NOT NULL DEFAULT 30
+            )
+        """)
+        await db.execute("INSERT OR IGNORE INTO antispam_config (id) VALUES (1)")
+
+        # Secondary indexes
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_login ON users(school_login)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_applications_tg_id ON applications(tg_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_auth_attempts_tg_time ON auth_attempts(tg_id, attempted_at)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_otp_sessions_tg_live ON otp_sessions(tg_id, used, expires_at)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_verifiers_req_user ON verification_verifiers(verification_request_id, verifier_user_id)")
+
         await db.commit()
     logger.info("Database initialized at %s", _DB_PATH)

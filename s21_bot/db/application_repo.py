@@ -67,3 +67,33 @@ class ApplicationRepo:
                 (moderator_id, moderator_name, decision_at, reject_reason, app_id),
             )
             await db.commit()
+
+    @staticmethod
+    async def try_claim_and_approve(app_id: int, moderator_id: int, moderator_name: str, decision_at: str) -> bool:
+        async with get_db() as db:
+            cur = await db.execute(
+                "UPDATE applications SET status='approved', moderator_id=?, moderator_name=?, decision_at=? "
+                "WHERE id=? AND status IN ('pending', 'waiting_votes')",
+                (moderator_id, moderator_name, decision_at, app_id),
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
+    @staticmethod
+    async def try_claim_and_reject(app_id: int, moderator_id: int, moderator_name: str, decision_at: str, reject_reason: Optional[str]) -> bool:
+        async with get_db() as db:
+            cur = await db.execute(
+                "UPDATE applications SET status='rejected', moderator_id=?, moderator_name=?, "
+                "decision_at=?, reject_reason=? WHERE id=? AND status IN ('pending', 'waiting_votes')",
+                (moderator_id, moderator_name, decision_at, reject_reason, app_id),
+            )
+            await db.commit()
+            return cur.rowcount > 0
+
+    @staticmethod
+    async def get_all_for_export() -> tuple[list[str], list[aiosqlite.Row]]:
+        async with get_db() as db:
+            async with db.execute("SELECT * FROM applications ORDER BY id") as cur:
+                rows = await cur.fetchall()
+                cols = [d[0] for d in cur.description] if cur.description else []
+                return cols, rows

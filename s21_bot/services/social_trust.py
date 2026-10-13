@@ -340,8 +340,9 @@ async def run_social_trust(
         logger.info("[social_trust] Registered users resolved: %d", len(users))
 
         if not users:
-            # No registered teammates — alert moderators, leave in waiting_votes
-            logger.info("[social_trust] No registered teammates for app #%d, alerting moderators", app_id)
+            # No registered teammates — revert to pending and alert moderators
+            logger.info("[social_trust] No registered teammates for app #%d, reverting to pending and alerting moderators", app_id)
+            await ApplicationRepo.set_status(app_id, "pending")
             await _alert_moderators_no_teammates(
                 app_id, candidate_login, candidate_tg_name, bot, config
             )
@@ -357,6 +358,14 @@ async def run_social_trust(
             bot=bot,
         )
         logger.info("[social_trust] Notify stats for app #%d: %s", app_id, notify_stats)
+
+        if notify_stats.sent == 0:
+            logger.info("[social_trust] 0 verifiers notified for app #%d, reverting to pending and alerting moderators", app_id)
+            await ApplicationRepo.set_status(app_id, "pending")
+            await _alert_moderators_no_teammates(
+                app_id, candidate_login, candidate_tg_name, bot, config
+            )
+            return
 
         notified_logins = [
             u["verifier_school_login"] or str(u["verifier_user_id"])
@@ -378,3 +387,7 @@ async def run_social_trust(
         logger.error(
             "[social_trust] Pipeline failed for app #%d: %s", app_id, exc, exc_info=True
         )
+        try:
+            await ApplicationRepo.set_status(app_id, "pending")
+        except Exception:
+            pass

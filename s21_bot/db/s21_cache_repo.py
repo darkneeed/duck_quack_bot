@@ -90,3 +90,16 @@ class S21CacheRepo:
             async with db.execute("SELECT COUNT(*) FROM s21_cache") as cur:
                 row = await cur.fetchone()
                 return row[0] if row else 0
+
+    @staticmethod
+    async def get_all_entries() -> list[tuple[str, dict]]:
+        async with get_db() as db:
+            async with db.execute("SELECT login, data_json FROM s21_cache") as cur:
+                rows = await cur.fetchall()
+        result: list[tuple[str, dict]] = []
+        for r in rows:
+            try:
+                result.append((r["login"], json.loads(r["data_json"])))
+            except Exception:
+                continue
+        return result

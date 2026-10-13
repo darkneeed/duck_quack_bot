@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from aiogram import Bot
 from ..config import Config
+from ..db.s21_cache_repo import S21CacheRepo
 from ..utils.datetime import format_now_local
 from ..utils.telegram import send_message_with_topic
 from .s21_api import S21Client
@@ -48,31 +49,27 @@ async def run_digest(bot: Bot, s21: S21Client, config: Config) -> None:
 async def _send_digest(bot: Bot, s21: S21Client, config: Config) -> None:
     logger.info("Sending weekly digest…")
 
-    logins = await s21.get_campus_participants(config.s21_campus_id, limit=1000)
-    if not logins:
-        logger.warning("Digest: no participants found")
+    entries = await S21CacheRepo.get_all_entries()
+    if not entries:
+        logger.warning("Digest: no cached participants found")
         return
 
     xp_data: list[tuple[str, int]] = []
     active_count = 0
     main_count = 0
 
-    for login in logins:
-        try:
-            info = await s21.get_participant(login)
-            if info:
-                parallel = info.get("parallelName") or ""
-                if parallel != "Core program":
-                    await asyncio.sleep(0.05)
-                    continue
-                main_count += 1
-                if (info.get("status") or "").upper() == "ACTIVE":
-                    active_count += 1
-                xp = info.get("expValue", 0) or 0
-                xp_data.append((login, xp))
-            await asyncio.sleep(0.05)  # avoid rate limit
-        except Exception:
-            pass
+    for login, profile in entries:
+        info = (profile or {}).get("info")
+        if not info or not isinstance(info, dict):
+            continue
+        parallel = info.get("parallelName") or ""
+        if parallel != "Core program":
+            continue
+        main_count += 1
+        if (info.get("status") or "").upper() == "ACTIVE":
+            active_count += 1
+        xp = info.get("expValue", 0) or 0
+        xp_data.append((login, xp))
 
     xp_data.sort(key=lambda x: x[1], reverse=True)
     top21 = xp_data[:9] + (xp_data[20:21] if len(xp_data) >= 21 else [])
@@ -115,4 +112,4 @@ async def _send_digest(bot: Bot, s21: S21Client, config: Config) -> None:
         parse_mode="HTML",
     )
     if sent is not None:
-        logger.info("Digest sent: %d participants, top10 computed", len(logins))
+        logger.info("Digest sent: %d participants, top10 computed", len(entries))

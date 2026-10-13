@@ -132,7 +132,7 @@ async def cmd_unmute(message: Message, bot: Bot, config: Config) -> None:
 @router.message(_IsMod(), Command("мут", "mute", ignore_case=True))
 async def cmd_mute(message: Message, bot: Bot, config: Config) -> None:
     parts = (message.text or "").split(maxsplit=3)[1:]  # drop command
-    target_id, rest = _parse_reply_or_id(message, parts)
+    target_id, rest = parse_reply_or_id(message, parts)
 
     if not target_id or not rest:
         await message.reply(

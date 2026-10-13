@@ -14,12 +14,13 @@ from ..strings import (
     REVIEW_PROJECT, REVIEW_TIME, REVIEW_CHECKER,
 )
 from ..utils.datetime import format_local_dt
+from ..utils.collections import BoundedSet
 from .s21_api import S21Client
 
 logger = logging.getLogger(__name__)
 
 
-_notified: set[tuple[str, str, int]] = set()
+_notified: BoundedSet[tuple[str, str, int]] = BoundedSet(maxsize=10_000)
 
 _DATE_FIELDS = (
     "reviewStartDate", "startDate", "verifierStartAt",

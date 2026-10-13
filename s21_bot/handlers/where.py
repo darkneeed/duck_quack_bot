@@ -238,6 +238,9 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
     approved = await _UR.get_approved_users()
     matches: list[tuple[str, int, str | None, str | None, dict, float]] = []  # (login, tg_id, tg_username, tg_name, project, score)
 
+    cached_entries = await S21CacheRepo.get_all_entries()
+    cache_by_login = dict(cached_entries)
+
     for user in approved:
         login = user["school_login"]
         tg_id_u = user["tg_id"]
@@ -246,10 +249,10 @@ async def cmd_peers(message: Message, s21: S21Client, config: Config) -> None:
         if not login:
             continue
         try:
-            profile = await S21CacheRepo.get(login)
+            profile = cache_by_login.get(login)
             all_projects = list((profile or {}).get("active_projects") or [])
             if not all_projects:
-                all_projects = await s21.get_active_projects(login)
+                continue
             best_project, best_score = _find_best_project_match(query, all_projects)
             if best_project and best_score >= 0.65:
                 matches.append((login, tg_id_u, tg_username_u, tg_name_u, best_project, best_score))

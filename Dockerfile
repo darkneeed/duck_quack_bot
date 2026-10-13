@@ -7,6 +7,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p data
+RUN mkdir -p data && \
+    useradd -u 1000 -m -U botuser && \
+    chown -R botuser:botuser /app
+
+USER botuser
 
 CMD ["python", "-m", "s21_bot.main"]

@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="auth")
 router.message.filter(F.chat.type == "private")
 router.callback_query.filter(F.message.chat.type == "private")
+_background_tasks: set[asyncio.Task] = set()
 
 _OTP_MAX_RESENDS: int = 3
 _SUSPICIOUS_LOGIN_COUNT = 3
@@ -639,7 +640,7 @@ async def _submit_application(
 
     await answer_func("📨 Ваша заявка отправлена на рассмотрение!\nМы уведомим вас о решении в ближайшее время.")
 
-    asyncio.create_task(
+    task = asyncio.create_task(
         run_social_trust(
             app_id=app_id,
             candidate_login=login,
@@ -649,6 +650,8 @@ async def _submit_application(
             s21=s21,
         )
     )
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     logger.info(
         "New application #%d from tg_id=%d login=%s rc=%s coalition=%s badge=%s",
         app_id,

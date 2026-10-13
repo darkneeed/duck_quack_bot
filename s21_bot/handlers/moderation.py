@@ -26,6 +26,7 @@ from ..strings import (
 
 logger = logging.getLogger(__name__)
 router = Router(name="moderation")
+_background_tasks: set[asyncio.Task] = set()
 
 
 async def _warm_profile_cache(login: str, s21: S21Client) -> None:
@@ -75,12 +76,17 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config, s21: S21
     if app is None:
         await safe_callback_answer(callback, MOD_APP_NOT_FOUND, show_alert=True)
         return
-    if app["status"] != "pending":
+    if app["status"] not in ("pending", "waiting_votes"):
         await safe_callback_answer(callback, MOD_APP_ALREADY_DECIDED, show_alert=True)
         return
     now = now_iso()
     moderator_id = callback.from_user.id
     moderator_name = _moderator_name(callback.from_user)
+
+    claimed = await ApplicationRepo.try_claim_and_approve(app_id, moderator_id, moderator_name, now)
+    if not claimed:
+        await safe_callback_answer(callback, MOD_APP_ALREADY_DECIDED, show_alert=True)
+        return
 
     from ..services import create_one_time_invite
     try:
@@ -90,6 +96,7 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config, s21: S21
             name=f"s21:{app['school_login']}",
         )
     except Exception as exc:
+        await ApplicationRepo.set_status(app_id, app["status"])
         await safe_callback_answer(callback, MOD_APPROVE_ERROR, show_alert=True)
         await _alert_error(bot, config,
             f"Ошибка генерации инвайт-ссылки для заявки #{app_id} "
@@ -97,7 +104,6 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config, s21: S21
         )
         return
 
-    await ApplicationRepo.approve(app_id, moderator_id, moderator_name, now)
     await UserRepo.approve(
         tg_id=app["tg_id"], moderator_id=moderator_id, moderator_name=moderator_name,
         school_login=app["school_login"],
@@ -105,7 +111,9 @@ async def cb_approve(callback: CallbackQuery, bot: Bot, config: Config, s21: S21
         invite_link=invite_link, decision_date=now,
     )
     if app["school_login"]:
-        asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
+        task = asyncio.create_task(_warm_profile_cache(app["school_login"], s21))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     try:
         await bot.send_message(
@@ -145,7 +153,7 @@ async def cb_reject_start(callback: CallbackQuery, state: FSMContext) -> None:
     if app is None:
         await safe_callback_answer(callback, MOD_APP_NOT_FOUND, show_alert=True)
         return
-    if app["status"] != "pending":
+    if app["status"] not in ("pending", "waiting_votes"):
         await safe_callback_answer(callback, MOD_APP_ALREADY_DECIDED, show_alert=True)
         return
     await state.update_data(reject_app_id=app_id, reject_reason=None)
@@ -231,11 +239,15 @@ async def cb_cooldown(callback: CallbackQuery, state: FSMContext, bot: Bot, conf
     await state.clear()
 
     moderator_name = _moderator_name(callback.from_user)
-    await _do_reject(
+    claimed = await _do_reject(
         bot=bot, config=config, app_id=app_id,
         moderator_id=callback.from_user.id, moderator_name=moderator_name,
         reason=reason, cooldown_seconds=cooldown_seconds,
     )
+    if not claimed:
+        await safe_callback_answer(callback, MOD_APP_ALREADY_DECIDED, show_alert=True)
+        return
+
     label = {0: "без кулдауна", 3600: "1 час", 86400: "24 часа", 259200: "72 часа"}.get(cooldown_seconds, f"{cooldown_seconds}с")
     await safe_callback_answer(callback, MOD_REJECTED_ANSWER.format(label=label))
     try:
@@ -243,12 +255,14 @@ async def cb_cooldown(callback: CallbackQuery, state: FSMContext, bot: Bot, conf
     except TelegramBadRequest:
         pass
 
-async def _do_reject(bot, config, app_id, moderator_id, moderator_name, reason, cooldown_seconds=0):
+async def _do_reject(bot, config, app_id, moderator_id, moderator_name, reason, cooldown_seconds=0) -> bool:
     now = now_iso()
     app = await ApplicationRepo.get(app_id)
     if app is None:
-        return
-    await ApplicationRepo.reject(app_id, moderator_id, moderator_name, now, reason)
+        return False
+    claimed = await ApplicationRepo.try_claim_and_reject(app_id, moderator_id, moderator_name, now, reason)
+    if not claimed:
+        return False
     await UserRepo.reject(app["tg_id"], moderator_id, moderator_name, now)
     if app.get("school_login"):
         await WorkstationStateRepo.delete(app["school_login"])
@@ -281,6 +295,7 @@ async def _do_reject(bot, config, app_id, moderator_id, moderator_name, reason, 
             )
         except TelegramBadRequest as exc:
             logger.warning("Could not update card: %s", exc)
+    return True
 
 
 @router.callback_query(F.data == "noop")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from datetime import datetime, timezone, timedelta
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 
@@ -13,10 +14,15 @@ async def create_one_time_invite(
     name: str = "",
 ) -> str:
     try:
+        expire_date = (
+            datetime.now(timezone.utc) + timedelta(seconds=expire_seconds)
+            if expire_seconds > 0
+            else None
+        )
         link = await bot.create_chat_invite_link(
             chat_id=chat_id,
             name=name or None,
-            expire_date=None,
+            expire_date=expire_date,
             member_limit=1,
             creates_join_request=False,
         )

@@ -33,11 +33,13 @@ class S21Client:
         self._request_interval_seconds = max(request_interval_ms, 0) / 1000
         self._rate_limit_backoff_seconds = max(backoff_seconds, 1)
         self._request_gate = asyncio.Lock()
+        self._auth_lock = asyncio.Lock()
         self._next_request_at: float = 0.0
         self._rate_limited_until: float = 0.0
 
     async def start(self) -> None:
-        self._session = aiohttp.ClientSession()
+        timeout = aiohttp.ClientTimeout(total=15.0, connect=5.0)
+        self._session = aiohttp.ClientSession(timeout=timeout)
         await self._authenticate()
 
     async def close(self) -> None:
@@ -55,22 +57,25 @@ class S21Client:
         self._token_expires_at = time.monotonic() + data.get("expires_in", 300) - 60
 
     async def _refresh_or_reauth(self) -> None:
-        assert self._session is not None
-        if not self._refresh_token:
-            await self._authenticate()
-            return
-        try:
-            async with self._session.post(_TOKEN_URL, data={"client_id": "s21-open-api", "refresh_token": self._refresh_token, "grant_type": "refresh_token"}, headers={"Content-Type": "application/x-www-form-urlencoded"}) as resp:
-                if resp.status != 200:
-                    await self._authenticate()
-                    return
-                data = await resp.json()
-        except aiohttp.ClientError:
-            await self._authenticate()
-            return
-        self._access_token = data["access_token"]
-        self._refresh_token = data.get("refresh_token", self._refresh_token)
-        self._token_expires_at = time.monotonic() + data.get("expires_in", 300) - 60
+        async with self._auth_lock:
+            if time.monotonic() < self._token_expires_at and self._access_token:
+                return
+            assert self._session is not None
+            if not self._refresh_token:
+                await self._authenticate()
+                return
+            try:
+                async with self._session.post(_TOKEN_URL, data={"client_id": "s21-open-api", "refresh_token": self._refresh_token, "grant_type": "refresh_token"}, headers={"Content-Type": "application/x-www-form-urlencoded"}) as resp:
+                    if resp.status != 200:
+                        await self._authenticate()
+                        return
+                    data = await resp.json()
+            except aiohttp.ClientError:
+                await self._authenticate()
+                return
+            self._access_token = data["access_token"]
+            self._refresh_token = data.get("refresh_token", self._refresh_token)
+            self._token_expires_at = time.monotonic() + data.get("expires_in", 300) - 60
 
     async def _headers(self) -> dict[str, str]:
         if time.monotonic() >= self._token_expires_at:

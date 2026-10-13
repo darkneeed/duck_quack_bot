@@ -8,5 +8,7 @@ data/
 *.bak
 .idea/
 .vscode/
+.codebase-memory/
+.pytest_cache/
 Thumbs.db
 Desktop.ini

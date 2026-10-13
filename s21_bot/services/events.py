@@ -6,11 +6,12 @@ from datetime import datetime, timezone, timedelta
 from aiogram import Bot
 from ..config import Config
 from ..utils.datetime import format_local_dt
+from ..utils.collections import BoundedSet
 from ..utils.telegram import send_message_with_topic
 from .s21_api import S21Client
 
 logger = logging.getLogger(__name__)
-_seen_event_ids: set[str] = set()
+_seen_event_ids: BoundedSet[str] = BoundedSet(maxsize=10_000)
 
 
 def _fmt_date(raw: str, config: Config) -> str:

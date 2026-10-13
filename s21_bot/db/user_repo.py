@@ -342,3 +342,34 @@ class UserRepo:
             await db.execute("DELETE FROM applications")
             await db.execute("DELETE FROM users")
             await db.commit()
+
+    @staticmethod
+    async def approve_as_guest(
+        tg_id: int,
+        school_login: str,
+        coalition: Optional[str],
+        invite_link: str,
+        home_campus: Optional[str],
+        decision_date: str,
+        moderator_id: int,
+        moderator_name: str,
+    ) -> None:
+        async with get_db() as db:
+            await db.execute(
+                """
+                UPDATE users SET status='approved', school_login=?, coalition=?,
+                invite_link=?, is_guest=1, home_campus=?, decision_date=?,
+                moderator_id=?, moderator_name=? WHERE tg_id=?
+                """,
+                (school_login, coalition, invite_link, home_campus, decision_date,
+                 moderator_id, moderator_name, tg_id),
+            )
+            await db.commit()
+
+    @staticmethod
+    async def get_all_for_export() -> tuple[list[str], list[aiosqlite.Row]]:
+        async with get_db() as db:
+            async with db.execute("SELECT * FROM users ORDER BY tg_id") as cur:
+                rows = await cur.fetchall()
+                cols = [d[0] for d in cur.description] if cur.description else []
+                return cols, rows
