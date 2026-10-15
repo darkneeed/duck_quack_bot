@@ -842,6 +842,39 @@ async def test_on_member_joined_newcomer_notification_format(temp_db):
         assert "<a href='tg://user?id=1395708125'>Nikita</a>" in sent_text
 
 
+@pytest.mark.asyncio
+async def test_s21_request_empty_body_and_coalition_none():
+    from s21_bot.services.s21_api import S21Client
+
+    client = S21Client("user", "pass")
+    client._session = MagicMock()
+    client._headers = AsyncMock(return_value={"Authorization": "Bearer tok"})
+
+    # Case 1: Empty response body (like /participants/hilariaj/coalition when no coalition)
+    mock_resp_empty = MagicMock()
+    mock_resp_empty.status = 200
+    mock_resp_empty.text = AsyncMock(return_value="")
+    mock_resp_empty.headers = {}
+    mock_resp_empty.raise_for_status = MagicMock()
+
+    ctx = AsyncMock()
+    ctx.__aenter__.return_value = mock_resp_empty
+    ctx.__aexit__.return_value = None
+    client._session.get = MagicMock(return_value=ctx)
+
+    res_empty = await client.get_coalition("hilariaj")
+    assert res_empty is None
+
+    # Case 2: Validation of participant without coalition
+    client.get_participant = AsyncMock(return_value={"login": "hilariaj", "campus": {"id": "camp1"}})
+    client.get_coalition = AsyncMock(return_value=None)
+    is_valid, coalition, reason = await client.validate_participant("hilariaj", campus_id="camp1")
+    assert is_valid is True
+    assert coalition is None
+    assert reason is None
+
+
+
 
 
 

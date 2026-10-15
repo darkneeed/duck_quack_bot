@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import json
 import logging
 import time
 from email.utils import parsedate_to_datetime
@@ -51,7 +52,7 @@ class S21Client:
         payload = {"client_id": "s21-open-api", "username": self._username, "password": self._password, "grant_type": "password"}
         async with self._session.post(_TOKEN_URL, data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"}) as resp:
             resp.raise_for_status()
-            data = await resp.json()
+            data = await resp.json(content_type=None)
         self._access_token = data["access_token"]
         self._refresh_token = data.get("refresh_token")
         self._token_expires_at = time.monotonic() + data.get("expires_in", 300) - 60
@@ -69,7 +70,7 @@ class S21Client:
                     if resp.status != 200:
                         await self._authenticate()
                         return
-                    data = await resp.json()
+                    data = await resp.json(content_type=None)
             except aiohttp.ClientError:
                 await self._authenticate()
                 return
@@ -145,9 +146,19 @@ class S21Client:
                 resp.raise_for_status()
                 self._api_down_since = None
                 self._api_down_alerted = False
+                text = await resp.text()
+                if not text or not text.strip():
+                    return None
                 if response_format == "text":
-                    return await resp.text()
-                return await resp.json()
+                    return text
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError as exc:
+                    logger.warning(
+                        "Failed to decode JSON from %s: %s (body: %r)",
+                        path, exc, text[:200],
+                    )
+                    return None
 
         raise RuntimeError("S21 request retry loop exited unexpectedly")
 
