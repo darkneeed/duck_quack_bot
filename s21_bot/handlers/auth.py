@@ -310,7 +310,6 @@ async def _send_otp(
         await _alert_otp_abuse(bot, config, tg_id, tg_name, rc_username, resend_count)
         return
 
-    await state.update_data(otp_resend_count=resend_count + 1)
     wait_msg = await message.answer(RC_CHECKING)
 
     try:
@@ -339,6 +338,7 @@ async def _send_otp(
         await state.clear()
         return
 
+    await state.update_data(otp_resend_count=resend_count + 1)
     code, secret, digest = generate_otp()
     await OTPSessionRepo.create(
         tg_id=tg_id,

@@ -61,8 +61,14 @@ class RocketChatClient:
             logger.info("Rocket.Chat login successful for user=%s (userId=%s)", self._username, self._user_id)
 
     async def start(self) -> None:
-        timeout = aiohttp.ClientTimeout(total=15.0, connect=5.0)
-        self._session = aiohttp.ClientSession(timeout=timeout)
+        timeout = aiohttp.ClientTimeout(total=30.0, connect=15.0, sock_read=20.0)
+        connector = aiohttp.TCPConnector(
+            ttl_dns_cache=300,
+            limit=10,
+            keepalive_timeout=60.0,
+            enable_cleanup_closed=True,
+        )
+        self._session = aiohttp.ClientSession(timeout=timeout, connector=connector)
         if (not self._user_id or not self._auth_token) and self._username and self._password:
             await self.login()
 
@@ -87,36 +93,60 @@ class RocketChatClient:
 
     async def _get(self, path: str, **params: str) -> dict:
         assert self._session is not None, "RocketChatClient not started"
-        for attempt in range(2):
-            async with self._session.get(
-                self._url(path), headers=self._headers, params=params
-            ) as resp:
-                if resp.status == 401 and attempt == 0 and self._username and self._password:
-                    logger.warning("Rocket.Chat returned 401 Unauthorized, re-authenticating...")
-                    try:
-                        await self.login()
-                        continue
-                    except Exception as exc:
-                        logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
-                resp.raise_for_status()
-                return await resp.json()
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                async with self._session.get(
+                    self._url(path), headers=self._headers, params=params
+                ) as resp:
+                    if resp.status == 401 and attempt == 0 and self._username and self._password:
+                        logger.warning("Rocket.Chat returned 401 Unauthorized, re-authenticating...")
+                        try:
+                            await self.login()
+                            continue
+                        except Exception as exc:
+                            logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
+                    resp.raise_for_status()
+                    return await resp.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if attempt < max_attempts - 1:
+                    wait_time = 1.0 * (attempt + 1)
+                    logger.warning(
+                        "Rocket.Chat GET %s network/timeout error (attempt %d/%d): %s. Retrying in %.1fs...",
+                        path, attempt + 1, max_attempts, exc, wait_time,
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise
         raise RocketChatError(f"Rocket.Chat GET {path} failed")
 
     async def _post(self, path: str, payload: dict) -> dict:
         assert self._session is not None, "RocketChatClient not started"
-        for attempt in range(2):
-            async with self._session.post(
-                self._url(path), headers=self._headers, json=payload
-            ) as resp:
-                if resp.status == 401 and attempt == 0 and self._username and self._password:
-                    logger.warning("Rocket.Chat returned 401 Unauthorized, re-authenticating...")
-                    try:
-                        await self.login()
-                        continue
-                    except Exception as exc:
-                        logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
-                resp.raise_for_status()
-                return await resp.json()
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                async with self._session.post(
+                    self._url(path), headers=self._headers, json=payload
+                ) as resp:
+                    if resp.status == 401 and attempt == 0 and self._username and self._password:
+                        logger.warning("Rocket.Chat returned 401 Unauthorized, re-authenticating...")
+                        try:
+                            await self.login()
+                            continue
+                        except Exception as exc:
+                            logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
+                    resp.raise_for_status()
+                    return await resp.json()
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                if attempt < max_attempts - 1:
+                    wait_time = 1.0 * (attempt + 1)
+                    logger.warning(
+                        "Rocket.Chat POST %s network/timeout error (attempt %d/%d): %s. Retrying in %.1fs...",
+                        path, attempt + 1, max_attempts, exc, wait_time,
+                    )
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise
         raise RocketChatError(f"Rocket.Chat POST {path} failed")
 
     async def get_user_info(self, username: str) -> Optional[RCUserInfo]:

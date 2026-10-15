@@ -402,8 +402,8 @@ async def test_s21_api_lock_and_timeout():
         assert mock_session_cls.called
         _, kwargs = mock_session_cls.call_args
         assert "timeout" in kwargs
-        assert kwargs["timeout"].total == 15.0
-        assert kwargs["timeout"].connect == 5.0
+        assert kwargs["timeout"].total == 30.0
+        assert kwargs["timeout"].connect == 15.0
 
 
 @pytest.mark.asyncio
