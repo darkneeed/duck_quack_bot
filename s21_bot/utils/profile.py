@@ -155,9 +155,15 @@ def render_profile_text(
 
 
 def _format_telegram_value(user) -> str:
-    username = (user["tg_username"] or "").strip()
+    username = (user["tg_username"] or "").strip() if "tg_username" in user.keys() else ""
     if username:
         return f"@{html.escape(username)}"
+    tg_id = user["tg_id"] if "tg_id" in user.keys() else None
+    if tg_id:
+        raw_name = user["tg_name"] if "tg_name" in user.keys() else None
+        clean_name = (raw_name or "").split(" (@")[0].strip() or "профиль"
+        safe_name = html.escape(clean_name)
+        return f"<a href='tg://user?id={tg_id}'>{safe_name}</a>"
     return PEER_CARD_CONTACT_NONE
 
 

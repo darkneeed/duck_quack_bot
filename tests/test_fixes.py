@@ -781,6 +781,68 @@ async def test_cmd_menu_approved_user(temp_db):
     assert "reply_markup" in call_kwargs
 
 
+@pytest.mark.asyncio
+async def test_format_tg_user_link():
+    from s21_bot.utils.helpers import format_tg_user_link
+
+    # User with username
+    res1 = format_tg_user_link(1169533571, "Алексей Чичков", "Mauxionesis")
+    assert res1 == "<a href='tg://user?id=1169533571'>Алексей Чичков</a> (@Mauxionesis)"
+
+    # User without username
+    res2 = format_tg_user_link(1395708125, "Nikita", None)
+    assert res2 == "<a href='tg://user?id=1395708125'>Nikita</a>"
+
+    # User whose name contained old (@username)
+    res3 = format_tg_user_link(1169533571, "Алексей Чичков (@Mauxionesis)", "Mauxionesis")
+    assert res3 == "<a href='tg://user?id=1169533571'>Алексей Чичков</a> (@Mauxionesis)"
+
+    # HTML special characters escaped
+    res4 = format_tg_user_link(123, "Tom <&> Jerry", "tom_jerry")
+    assert res4 == "<a href='tg://user?id=123'>Tom &lt;&amp;&gt; Jerry</a> (@tom_jerry)"
+
+
+@pytest.mark.asyncio
+async def test_format_telegram_value():
+    from s21_bot.utils.profile import _format_telegram_value
+
+    assert _format_telegram_value({"tg_username": "myuser"}) == "@myuser"
+    assert _format_telegram_value({"tg_username": None, "tg_id": 1395708125, "tg_name": "Nikita"}) == "<a href='tg://user?id=1395708125'>Nikita</a>"
+    assert _format_telegram_value({"tg_username": None, "tg_id": None}) == "не указан"
+
+
+@pytest.mark.asyncio
+async def test_on_member_joined_newcomer_notification_format(temp_db):
+    from s21_bot.handlers.community import on_member_joined
+
+    # Setup approved user without username (like Nikita / blaneken)
+    await UserRepo.upsert_basic(1395708125, "Nikita", None)
+    await UserRepo.approve(1395708125, 1, "Admin", "blaneken", "BERTH", "https://t.me/+link", "now")
+
+    bot = AsyncMock()
+    config = MagicMock()
+    config.community_chat_id = -100123
+    config.admin_ids = [1]
+    config.newcomer_topic_id = 278
+    config.s21_profile_url_template = "https://platform.21-school.ru/profile/{login}"
+
+    update = MagicMock()
+    update.chat.id = -100123
+    update.invite_link = None
+    update.new_chat_member.user.id = 1395708125
+    update.new_chat_member.user.is_bot = False
+    update.new_chat_member.user.full_name = "Nikita"
+    update.new_chat_member.user.username = None
+
+    with patch("s21_bot.handlers.community.send_message_with_topic", new_callable=AsyncMock) as mock_send:
+        await on_member_joined(update, bot, config)
+        assert mock_send.called
+        sent_text = mock_send.call_args.kwargs["text"]
+        assert "blaneken" in sent_text
+        assert "<a href='tg://user?id=1395708125'>Nikita</a>" in sent_text
+
+
+
 
 
 

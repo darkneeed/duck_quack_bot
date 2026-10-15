@@ -21,6 +21,7 @@ from ..strings import (
     START_APPROVED_GREETING,
 )
 from ..keyboards import cabinet_kb
+from ..utils import format_tg_user_link, tg_display_name
 from ..utils.branding import build_profile_url
 from ..utils.telegram import send_message_with_topic
 
@@ -126,7 +127,7 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
         return
 
     # Сценарий 3: всё ок
-    await UserRepo.upsert_basic(member.id, member.full_name or str(member.id), member.username)
+    await UserRepo.upsert_basic(member.id, tg_display_name(member), member.username)
     user = await UserRepo.get_by_tg_id(member.id)
     if not user:
         return
@@ -138,9 +139,11 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
     # Гость из другого кампуса
     if is_guest and login:
         home_campus = user["home_campus"] or "?"
-        tg_name_full = member.full_name or str(member.id)
-        if member.username:
-            tg_name_full += f" (@{member.username})"
+        tg_name_full = format_tg_user_link(
+            member.id,
+            member.full_name or user["tg_name"] or str(member.id),
+            member.username or user["tg_username"],
+        )
         if config.newcomer_topic_id and getattr(config, "enable_newcomer", True):
             try:
                 await send_message_with_topic(
@@ -184,7 +187,12 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
         lines = [NEWCOMER_HEADER]
         lines.append(NEWCOMER_LOGIN.format(login=login, url=build_profile_url(login, config)))
         lines.append(NEWCOMER_TG_ID.format(tg_id=member.id))
-        lines.append(NEWCOMER_TG_NAME.format(tg_name=user["tg_name"]))
+        tg_name_html = format_tg_user_link(
+            member.id,
+            member.full_name or user["tg_name"] or str(member.id),
+            member.username or user["tg_username"],
+        )
+        lines.append(NEWCOMER_TG_NAME.format(tg_name=tg_name_html))
         if coalition:
             lines.append(NEWCOMER_COALITION.format(coalition=coalition))
         lines.append(NEWCOMER_PROFILE_LINK.format(url=build_profile_url(login, config)))

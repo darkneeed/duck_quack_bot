@@ -1,4 +1,6 @@
 from __future__ import annotations
+import html
+import re
 from datetime import datetime, timezone
 from typing import Optional
 from aiogram.types import User
@@ -23,13 +25,37 @@ def now_iso() -> str:
 
 
 def tg_display_name(user: User) -> str:
-    parts = [user.first_name or ""]
-    if user.last_name:
-        parts.append(user.last_name)
-    name = " ".join(parts).strip()
-    if user.username:
-        name += f" (@{user.username})"
-    return name or f"id:{user.id}"
+    full_name = getattr(user, "full_name", None)
+    if isinstance(full_name, str) and full_name.strip():
+        name = full_name.strip()
+    else:
+        parts: list[str] = []
+        first_name = getattr(user, "first_name", None)
+        if isinstance(first_name, str) and first_name:
+            parts.append(first_name)
+        last_name = getattr(user, "last_name", None)
+        if isinstance(last_name, str) and last_name:
+            parts.append(last_name)
+        name = " ".join(parts).strip()
+    username = getattr(user, "username", None)
+    if isinstance(username, str) and username:
+        name += f" (@{username})"
+    user_id = getattr(user, "id", None)
+    return name or f"id:{user_id}"
+
+
+def format_tg_user_link(tg_id: int, full_name: str, username: str | None = None) -> str:
+    clean_name = (full_name or "").split(" (@")[0].strip() or f"id:{tg_id}"
+    safe_name = html.escape(clean_name)
+    clean_username = (username or "").strip().lstrip("@")
+    if not clean_username and " (@" in (full_name or ""):
+        m = re.search(r"\(@([A-Za-z0-9_]{5,})\)", full_name)
+        if m:
+            clean_username = m.group(1)
+    if clean_username:
+        safe_user = html.escape(clean_username)
+        return f"<a href='tg://user?id={tg_id}'>{safe_name}</a> (@{safe_user})"
+    return f"<a href='tg://user?id={tg_id}'>{safe_name}</a>"
 
 
 def build_moderation_card(
