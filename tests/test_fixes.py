@@ -874,6 +874,35 @@ async def test_s21_request_empty_body_and_coalition_none():
     assert reason is None
 
 
+@pytest.mark.asyncio
+async def test_rocketchat_user_not_found_returns_none():
+    from s21_bot.services.rocketchat import RocketChatClient
+
+    client = RocketChatClient("http://rc.local", "uid", "tok")
+    client._session = MagicMock()
+
+    class Fake400Response:
+        status = 400
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def raise_for_status(self):
+            raise Exception("HTTP 400")
+
+        async def json(self):
+            return {"success": False, "error": "User not found."}
+
+    client._session.get = MagicMock(return_value=Fake400Response())
+
+    info = await client.get_user_info("hilariaj")
+    assert info is None
+
+
+
 
 
 

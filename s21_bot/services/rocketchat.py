@@ -106,9 +106,19 @@ class RocketChatClient:
                             continue
                         except Exception as exc:
                             logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
+                    if resp.status == 400:
+                        try:
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                return data
+                        except Exception:
+                            pass
                     resp.raise_for_status()
                     return await resp.json()
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                status = getattr(exc, "status", None)
+                if status and 400 <= status < 500 and status != 429:
+                    raise
                 if attempt < max_attempts - 1:
                     wait_time = 1.0 * (attempt + 1)
                     logger.warning(
@@ -135,9 +145,19 @@ class RocketChatClient:
                             continue
                         except Exception as exc:
                             logger.error("Failed to re-authenticate with Rocket.Chat: %s", exc)
+                    if resp.status == 400:
+                        try:
+                            data = await resp.json()
+                            if isinstance(data, dict):
+                                return data
+                        except Exception:
+                            pass
                     resp.raise_for_status()
                     return await resp.json()
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                status = getattr(exc, "status", None)
+                if status and 400 <= status < 500 and status != 429:
+                    raise
                 if attempt < max_attempts - 1:
                     wait_time = 1.0 * (attempt + 1)
                     logger.warning(
