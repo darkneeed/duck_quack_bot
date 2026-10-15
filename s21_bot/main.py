@@ -50,6 +50,8 @@ async def main() -> None:
         base_url=config.rc_base_url,
         user_id=config.rc_user_id,
         auth_token=config.rc_auth_token,
+        username=config.rc_username or config.s21_username,
+        password=config.rc_password or config.s21_password,
     )
     await rc_client.start()
 

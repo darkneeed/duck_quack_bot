@@ -130,6 +130,8 @@ class Config:
 
     support_contacts: list = field(default_factory=list)
     social_trust_project_ids: frozenset = field(default_factory=frozenset)
+    rc_username: str = field(default="")
+    rc_password: str = field(default="")
 
 
 def _parse_bool(value: str) -> bool:
@@ -248,7 +250,9 @@ def load_config() -> Config:
         s21_campus_id=_require("S21_CAMPUS_ID"),
         community_chat_id=_require_int("COMMUNITY_CHAT_ID"),
         rc_base_url=_require("RC_BASE_URL"),
-        rc_user_id=_require("RC_USER_ID"),
-        rc_auth_token=_require("RC_AUTH_TOKEN"),
+        rc_user_id=os.environ.get("RC_USER_ID", ""),
+        rc_auth_token=os.environ.get("RC_AUTH_TOKEN", ""),
+        rc_username=os.environ.get("RC_USERNAME", ""),
+        rc_password=os.environ.get("RC_PASSWORD", ""),
         db_path=os.environ.get("DB_PATH", "data/bot.db"),
     )

@@ -55,10 +55,13 @@ async def cmd_start_with_code(message: Message, state: FSMContext, config: Confi
     if result == ValidationResult.OK:
         await state.update_data(**{_PENDING_CODE_KEY: code})
         creator_name = "администратора"
-        if row and row.get("creator_user_id"):
-            creator = await UserRepo.get_by_tg_id(row["creator_user_id"])
-            if creator:
-                creator_name = creator.get("tg_name") or (f"@{creator['school_login']}" if creator.get("school_login") else "администратора")
+        if row:
+            row_dict = dict(row)
+            if row_dict.get("creator_user_id"):
+                creator = await UserRepo.get_by_tg_id(row_dict["creator_user_id"])
+                if creator:
+                    creator_dict = dict(creator)
+                    creator_name = creator_dict.get("tg_name") or (f"@{creator_dict['school_login']}" if creator_dict.get("school_login") else "администратора")
         await message.answer(INVITE_ACCEPTED_START.format(code=code, creator=creator_name), parse_mode="HTML")
         logger.info(
             "Invite code stored in FSM: code=%s tg_id=%d",

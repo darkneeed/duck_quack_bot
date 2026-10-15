@@ -670,4 +670,61 @@ async def test_get_campus_participants_pagination():
     assert parts == ["user1", "user2", "user3"]
 
 
+@pytest.mark.asyncio
+async def test_rocketchat_auto_reauth():
+    from s21_bot.services.rocketchat import RocketChatClient
+
+    client = RocketChatClient(
+        base_url="https://rocketchat.example.com",
+        user_id="old_uid",
+        auth_token="old_token",
+        username="bot_user",
+        password="secret_password",
+    )
+
+    client.login = AsyncMock()
+    async def fake_login():
+        client._user_id = "new_uid"
+        client._auth_token = "new_token"
+    client.login.side_effect = fake_login
+
+    class FakeResponse:
+        def __init__(self, status, json_data):
+            self.status = status
+            self._json_data = json_data
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+        def raise_for_status(self):
+            if self.status >= 400:
+                raise Exception(f"HTTP {self.status}")
+
+        async def json(self):
+            return self._json_data
+
+    call_count = 0
+    def mock_get(url, headers=None, params=None):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return FakeResponse(401, {"error": "unauthorized"})
+        return FakeResponse(200, {"success": True, "user": {"_id": "u1", "username": "user1", "active": True}})
+
+    mock_session = MagicMock()
+    mock_session.get.side_effect = mock_get
+    client._session = mock_session
+
+    info = await client.get_user_info("user1")
+    assert info is not None
+    assert info.username == "user1"
+    assert client.login.called
+    assert client._user_id == "new_uid"
+    assert client._auth_token == "new_token"
+
+
+
 
