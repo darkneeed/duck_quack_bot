@@ -18,7 +18,9 @@ from ..strings import (
     NEWCOMER_TG_NAME,
     NEWCOMER_UNVERIFIED_KICK,
     NEWCOMER_WRONG_LINK,
+    START_APPROVED_GREETING,
 )
+from ..keyboards import cabinet_kb
 from ..utils.branding import build_profile_url
 from ..utils.telegram import send_message_with_topic
 
@@ -166,6 +168,16 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
                 await GuestInviteRepo.mark_used(invite["id"])
         except Exception:
             pass
+        try:
+            await bot.send_message(
+                chat_id=member.id,
+                text=START_APPROVED_GREETING.format(login=login or ""),
+                parse_mode="HTML",
+                reply_markup=cabinet_kb(is_admin=member.id in config.admin_ids),
+            )
+            logger.info("Sent cabinet menu to guest %d in DM upon joining community chat", member.id)
+        except Exception as exc:
+            logger.warning("Failed to send cabinet menu to guest %d in DM: %s", member.id, exc)
         return
 
     if config.newcomer_topic_id and login:
@@ -200,3 +212,14 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
             logger.info("Set tag '%s' for user %d", login, member.id)
         except Exception as exc:
             logger.warning("Failed to set tag for user %d: %s", member.id, exc)
+
+    try:
+        await bot.send_message(
+            chat_id=member.id,
+            text=START_APPROVED_GREETING.format(login=login or ""),
+            parse_mode="HTML",
+            reply_markup=cabinet_kb(is_admin=member.id in config.admin_ids),
+        )
+        logger.info("Sent cabinet menu to user %d in DM upon joining community chat", member.id)
+    except Exception as exc:
+        logger.warning("Failed to send cabinet menu to user %d in DM: %s", member.id, exc)

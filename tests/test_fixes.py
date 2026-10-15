@@ -726,5 +726,61 @@ async def test_rocketchat_auto_reauth():
     assert client._auth_token == "new_token"
 
 
+@pytest.mark.asyncio
+async def test_on_member_joined_sends_cabinet_menu(temp_db):
+    from s21_bot.handlers.community import on_member_joined
+
+    # Setup approved user
+    await UserRepo.upsert_basic(555, "Test Member", "testmember")
+    await UserRepo.approve(555, 1, "Admin", "testmember", "test_coalition", "link", "now")
+
+    bot = AsyncMock()
+    config = MagicMock()
+    config.community_chat_id = -100123
+    config.admin_ids = [1]
+    config.newcomer_topic_id = 0
+
+    update = MagicMock()
+    update.chat.id = -100123
+    update.invite_link = None
+    update.new_chat_member.user.id = 555
+    update.new_chat_member.user.is_bot = False
+    update.new_chat_member.user.full_name = "Test Member"
+    update.new_chat_member.user.username = "testmember"
+
+    await on_member_joined(update, bot, config)
+
+    # Check bot.send_message was called to DM member 555 with cabinet
+    dm_calls = [c for c in bot.send_message.call_args_list if c.kwargs.get("chat_id") == 555]
+    assert len(dm_calls) >= 1
+    call_args = dm_calls[0]
+    assert "testmember" in call_args.kwargs["text"]
+    assert "reply_markup" in call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_cmd_menu_approved_user(temp_db):
+    from s21_bot.handlers.cabinet import cmd_menu
+
+    await UserRepo.upsert_basic(777, "Menu User", "menuuser")
+    await UserRepo.approve(777, 1, "Admin", "menuuser", "coalition", "link", "now")
+
+    message = MagicMock()
+    message.from_user.id = 777
+    message.answer = AsyncMock()
+
+    state = AsyncMock()
+    config = MagicMock()
+    config.admin_ids = [1]
+
+    await cmd_menu(message, state, config)
+
+    assert message.answer.called
+    call_kwargs = message.answer.call_args.kwargs
+    assert "menuuser" in message.answer.call_args.args[0]
+    assert "reply_markup" in call_kwargs
+
+
+
 
 

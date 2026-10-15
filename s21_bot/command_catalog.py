@@ -29,6 +29,14 @@ COMMAND_SPECS: tuple[CommandSpec, ...] = (
         available_in_private=True,
     ),
     CommandSpec(
+        command="/menu",
+        aliases=("cabinet",),
+        description="главное меню личного кабинета",
+        role="approved",
+        group="private",
+        available_in_private=True,
+    ),
+    CommandSpec(
         command="/changetg",
         aliases=(),
         description="подсказка по смене Telegram-аккаунта",

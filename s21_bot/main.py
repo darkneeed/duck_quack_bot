@@ -57,6 +57,21 @@ async def main() -> None:
 
     bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
+    try:
+        from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
+        await bot.set_my_commands(
+            [
+                BotCommand(command="menu", description="Личный кабинет"),
+                BotCommand(command="profile", description="Мой профиль"),
+                BotCommand(command="where", description="Где сидит пир"),
+                BotCommand(command="events", description="Мероприятия"),
+                BotCommand(command="start", description="Главное меню / перезапуск"),
+            ],
+            scope=BotCommandScopeAllPrivateChats(),
+        )
+    except Exception as exc:
+        logger.warning("Failed to set bot commands: %s", exc)
+
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(BanCheckMiddleware())
     dp.callback_query.middleware(BanCheckMiddleware())

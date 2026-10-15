@@ -22,6 +22,7 @@ from ..keyboards import (
     cabinet_back_kb,
     cabinet_cancel_input_kb,
     cabinet_home_kb,
+    cabinet_kb,
     cabinet_profile_card_contact_kb,
     cabinet_profile_card_kb,
 )
@@ -34,6 +35,7 @@ from ..strings import (
     CABINET_NO_CODES,
     INVITE_GENCODE_CAPTION,
     ONLY_APPROVED,
+    START_APPROVED_GREETING,
     PEER_CARD_COMMENT_REMOVED,
     PEER_CARD_COMMENT_SAVED,
     PEER_CARD_CONTACT_PROMPT,
@@ -586,6 +588,21 @@ async def _send_profile_card_submission_for_moderation(
             reply_markup=reply_markup,
         )
     return sent.message_id if sent else None
+
+
+@router.message(F.chat.type == "private", Command("menu", "cabinet", ignore_case=True))
+async def cmd_menu(message: Message, state: FSMContext, config: Config) -> None:
+    assert message.from_user is not None
+    await state.clear()
+    user = await UserRepo.get_by_tg_id(message.from_user.id)
+    if not user or user["status"] != "approved" or not user["school_login"]:
+        await message.answer(ONLY_APPROVED)
+        return
+    await message.answer(
+        START_APPROVED_GREETING.format(login=user["school_login"]),
+        parse_mode="HTML",
+        reply_markup=cabinet_kb(is_admin=message.from_user.id in config.admin_ids),
+    )
 
 
 @router.message(Command("changetg"))
