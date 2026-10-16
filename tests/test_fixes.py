@@ -902,6 +902,38 @@ async def test_rocketchat_user_not_found_returns_none():
     assert info is None
 
 
+@pytest.mark.asyncio
+async def test_admin_panel_callback_unpacking():
+    from s21_bot.handlers.admin_panel import cb_setting_detail, cb_pick_setting
+
+    callback = MagicMock()
+    callback.data = "admin_panel:detail:auto_delete_join_messages:features:0"
+    callback.message = MagicMock()
+    callback.message.edit_text = AsyncMock()
+    callback.answer = AsyncMock()
+
+    config = MagicMock()
+    config.auto_delete_join_messages = True
+    config.admin_ids = [123]
+
+    state = AsyncMock()
+
+    # Test cb_setting_detail
+    await cb_setting_detail(callback, config, state)
+    assert callback.message.edit_text.called
+
+    # Test cb_pick_setting
+    callback_edit = MagicMock()
+    callback_edit.data = "admin_panel:edit:auto_delete_join_messages:features:0"
+    callback_edit.message = MagicMock()
+    callback_edit.message.answer = AsyncMock()
+    callback_edit.answer = AsyncMock()
+
+    await cb_pick_setting(callback_edit, state, config)
+    assert callback_edit.message.answer.called
+
+
+
 
 
 

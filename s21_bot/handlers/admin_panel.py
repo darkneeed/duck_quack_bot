@@ -280,7 +280,7 @@ async def cb_noop(callback: CallbackQuery) -> None:
 @router.callback_query(IsAdminInPrivateChatCB(), F.data.startswith("admin_panel:detail:"))
 async def cb_setting_detail(callback: CallbackQuery, config: Config, state: FSMContext) -> None:
     await state.clear()
-    _, _, _, key, section, page_raw = callback.data.split(":")
+    _, _, key, section, page_raw = callback.data.split(":", 4)
     page = int(page_raw)
     await callback.message.edit_text(
         _detail_text(config, key),
@@ -321,7 +321,7 @@ async def cb_cleanup_join_messages(callback: CallbackQuery, bot: Bot, config: Co
 
 @router.callback_query(IsAdminInPrivateChatCB(), F.data.startswith("admin_panel:edit:"))
 async def cb_pick_setting(callback: CallbackQuery, state: FSMContext, config: Config) -> None:
-    _, _, _, key, section, page = callback.data.split(":")
+    _, _, key, section, page = callback.data.split(":", 4)
     meta = _SETTING_META[key]
     current = _format_value(key, getattr(config, key))
     await state.set_state(AdminSettingsFSM.waiting_value)
