@@ -226,6 +226,11 @@ async def cmd_approve(message: Message, bot: Bot, config: Config, s21: S21Client
     from ..services import create_one_time_invite
 
     try:
+        await bot.unban_chat_member(chat_id=config.community_chat_id, user_id=app["tg_id"], only_if_banned=True)
+    except Exception as exc:
+        logger.warning("Failed to unban user %d in community chat: %s", app["tg_id"], exc)
+
+    try:
         invite_link = await create_one_time_invite(
             bot=bot,
             chat_id=config.community_chat_id,

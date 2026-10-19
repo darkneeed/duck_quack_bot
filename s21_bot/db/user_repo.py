@@ -367,6 +367,18 @@ class UserRepo:
             await db.commit()
 
     @staticmethod
+    async def set_status(tg_id: int, status: str) -> None:
+        async with get_db() as db:
+            await db.execute("UPDATE users SET status = ? WHERE tg_id = ?", (status, tg_id))
+            await db.commit()
+
+    @staticmethod
+    async def update_invite_link(tg_id: int, invite_link: str) -> None:
+        async with get_db() as db:
+            await db.execute("UPDATE users SET invite_link = ? WHERE tg_id = ?", (invite_link, tg_id))
+            await db.commit()
+
+    @staticmethod
     async def get_all_for_export() -> tuple[list[str], list[aiosqlite.Row]]:
         async with get_db() as db:
             async with db.execute("SELECT * FROM users ORDER BY tg_id") as cur:

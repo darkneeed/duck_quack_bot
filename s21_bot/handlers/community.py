@@ -3,7 +3,7 @@ import logging
 from aiogram import Bot, F, Router
 from aiogram.methods import SetChatMemberTag
 from aiogram.types import ChatMemberUpdated, Message
-from aiogram.filters import ChatMemberUpdatedFilter, JOIN_TRANSITION
+from aiogram.filters import ChatMemberUpdatedFilter, JOIN_TRANSITION, KICKED
 from ..config import Config
 from ..db import UserRepo
 from ..db.join_message_repo import JoinMessageRepo
@@ -231,3 +231,14 @@ async def on_member_joined(update: ChatMemberUpdated, bot: Bot, config: Config) 
         logger.info("Sent cabinet menu to user %d in DM upon joining community chat", member.id)
     except Exception as exc:
         logger.warning("Failed to send cabinet menu to user %d in DM: %s", member.id, exc)
+
+
+@router.chat_member(ChatMemberUpdatedFilter(KICKED))
+async def on_member_kicked(update: ChatMemberUpdated, config: Config) -> None:
+    if update.chat.id != config.community_chat_id:
+        return
+    kicked_user = update.new_chat_member.user
+    if kicked_user.is_bot:
+        return
+    logger.info("User %d was kicked from community chat", kicked_user.id)
+    await UserRepo.set_status(kicked_user.id, "kicked")

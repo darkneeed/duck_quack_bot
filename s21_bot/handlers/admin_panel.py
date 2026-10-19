@@ -54,6 +54,7 @@ _SETTING_META: dict[str, SettingMeta] = {
     "notify_topic_id": SettingMeta("Универсальный notify-топик", "Куда слать общие сервисные уведомления.", "topics", "0 или ID топика"),
     "failed_auth_topic_id": SettingMeta("Топик ошибок авторизации", "Алерты по неудачным логинам и подозрительным попыткам.", "topics", "Например: 7"),
     "events_topic_id": SettingMeta("Топик мероприятий", "Куда публиковать анонсы событий.", "topics", "0 или ID топика"),
+    "events_chat_id": SettingMeta("Чат мероприятий", "ID чата для анонсов (0 = чат сообщества).", "topics", "0 или -100..."),
     "workstation_topic_id": SettingMeta("Топик кампуса", "Уведомления о местах и активности в кампусе.", "topics", "0 или ID топика"),
     "newcomer_topic_id": SettingMeta("Топик новичков", "Карточки новых участников и welcome-сообщения.", "topics", "0 или ID топика"),
     "digest_topic_id": SettingMeta("Топик дайджеста", "Куда отправлять еженедельный дайджест и админ-посты.", "topics", "0 или ID топика"),
@@ -62,6 +63,8 @@ _SETTING_META: dict[str, SettingMeta] = {
     "enable_digest": SettingMeta("Еженедельный дайджест", "Фоновая отправка дайджеста по кампусу.", "features", is_toggle=True),
     "enable_workstation": SettingMeta("Мониторинг кампуса", "Фоновый поллер мест/кластеров.", "features", is_toggle=True),
     "enable_newcomer": SettingMeta("Уведомления о новичках", "Отправка newcomer-карточек в чат сообщества.", "features", is_toggle=True),
+    "enable_events": SettingMeta("Анонсы мероприятий", "Фоновая отправка анонсов событий в чат.", "features", is_toggle=True),
+    "events_exclude_tribes": SettingMeta("Исключать события трайбов", "Исключать мероприятия с типом 'Трайб' из анонсов.", "features", is_toggle=True),
     "auto_delete_join_messages": SettingMeta("Удалять сервисные сообщения о входе", "Автоматически удалять Telegram service messages о вступлении.", "features", is_toggle=True),
     "cmd_where_scope": SettingMeta("/where", "Где доступна команда поиска участника.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
     "cmd_peer_scope": SettingMeta("/пир", "Где доступна команда карточки участника.", "commands", "PRIVATE | PUBLIC | BOTH | OFF"),
@@ -89,11 +92,15 @@ _SETTING_META: dict[str, SettingMeta] = {
 
 def _format_value(key: str, value: object) -> str:
     if isinstance(value, bool):
+        if key == "events_exclude_tribes":
+            return "ДА" if value else "НЕТ"
         return "ВКЛ" if value else "ВЫКЛ"
     if value is None:
         return "—"
     if isinstance(value, int) and value == 0 and key.endswith("_topic_id"):
         return "не задан"
+    if isinstance(value, int) and value == 0 and key.endswith("_chat_id"):
+        return "по умолчанию"
     if isinstance(value, (list, tuple, set, frozenset)):
         return ",".join(str(x) for x in value) if value else "—"
     return str(value) if value is not None and str(value) else "—"
@@ -117,11 +124,11 @@ def _section_keys(section: str) -> list[str]:
 
 
 def _panel_text(config: Config) -> str:
-    enabled = sum(1 for key in ("enable_digest", "enable_workstation", "enable_newcomer") if getattr(config, key))
+    enabled = sum(1 for key in ("enable_digest", "enable_workstation", "enable_newcomer", "enable_events") if getattr(config, key))
     return (
         "🛠 <b>Админ-панель</b>\n\n"
         "Управление runtime-настройками бота без правки `.env`.\n\n"
-        f"• Фоновые фичи включены: <b>{enabled}/3</b>\n"
+        f"• Фоновые фичи включены: <b>{enabled}/4</b>\n"
         f"• Notify-топик: <code>{_format_value('notify_topic_id', config.notify_topic_id)}</code>\n"
         f"• Порог алерта API: <b>{config.api_down_alert_minutes} мин.</b>\n"
         "• Команды и уведомления разбиты по разделам ниже"

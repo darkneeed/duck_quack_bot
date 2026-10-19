@@ -122,9 +122,11 @@ from ..strings import (  # noqa: E402
 )
 
 
-def cabinet_home_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
+def cabinet_home_kb(is_admin: bool = False, show_chat_invite: bool = False) -> InlineKeyboardMarkup:
     """Main menu for approved users."""
     builder = InlineKeyboardBuilder()
+    if show_chat_invite:
+        builder.button(text="Вступить в чат", callback_data="cabinet:get_invite")
     builder.button(text=CABINET_BTN_PROFILE, callback_data="cabinet:profile")
     builder.button(text=CABINET_BTN_GENCODE, callback_data="cabinet:gencode")
     builder.button(text=CABINET_BTN_MYCODES, callback_data="cabinet:mycodes")
@@ -143,8 +145,8 @@ def cabinet_back_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def cabinet_kb(is_admin: bool = False) -> InlineKeyboardMarkup:
-    return cabinet_home_kb(is_admin=is_admin)
+def cabinet_kb(is_admin: bool = False, show_chat_invite: bool = False) -> InlineKeyboardMarkup:
+    return cabinet_home_kb(is_admin=is_admin, show_chat_invite=show_chat_invite)
 
 
 def cabinet_profile_card_kb(*, has_photo: bool, has_comment: bool) -> InlineKeyboardMarkup:

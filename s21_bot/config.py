@@ -62,6 +62,9 @@ RUNTIME_CONFIG_ENV_MAP: dict[str, str] = {
     "enable_digest": "ENABLE_DIGEST",
     "enable_workstation": "ENABLE_WORKSTATION",
     "enable_newcomer": "ENABLE_NEWCOMER",
+    "enable_events": "ENABLE_EVENTS",
+    "events_exclude_tribes": "EVENTS_EXCLUDE_TRIBES",
+    "events_chat_id": "EVENTS_CHAT_ID",
     "auto_delete_join_messages": "AUTO_DELETE_JOIN_MESSAGES",
     "cmd_where_scope": "CMD_WHERE_SCOPE",
     "cmd_peer_scope": "CMD_PEER_SCOPE",
@@ -117,6 +120,9 @@ class Config:
     enable_digest: bool = field(default=True)
     enable_workstation: bool = field(default=True)
     enable_newcomer: bool = field(default=True)
+    enable_events: bool = field(default=True)
+    events_exclude_tribes: bool = field(default=False)
+    events_chat_id: int = field(default=0)
     auto_delete_join_messages: bool = field(default=False)
 
     cmd_where_scope: str = field(default="BOTH")

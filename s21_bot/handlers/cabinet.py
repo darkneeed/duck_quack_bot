@@ -828,18 +828,35 @@ def _build_qr_image(data: str):
 
 
 @router.callback_query(F.data == "cabinet:home")
-async def cb_cabinet_home(callback: CallbackQuery, config: Config) -> None:
+async def cb_cabinet_home(callback: CallbackQuery, bot: Bot, config: Config) -> None:
     assert callback.from_user is not None
     user = await UserRepo.get_by_tg_id(callback.from_user.id)
     if not user or user["status"] != "approved" or not user["school_login"]:
         await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
         return
+
+    in_chat = True
+    try:
+        chat_member = await bot.get_chat_member(chat_id=config.community_chat_id, user_id=callback.from_user.id)
+        if chat_member.status == "kicked":
+            await UserRepo.set_status(callback.from_user.id, "kicked")
+            await safe_callback_answer(
+                callback,
+                "Вы были исключены из чата. Для возвращения пройдите повторную верификацию через /start.",
+                show_alert=True,
+            )
+            return
+        in_chat = chat_member.status in ("creator", "administrator", "member", "restricted")
+    except Exception as exc:
+        logger.warning("Failed to check chat member in cb_cabinet_home for %d: %s", callback.from_user.id, exc)
+
     await safe_callback_answer(callback)
+    markup = cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config), show_chat_invite=not in_chat)
     try:
         await callback.message.edit_text(
             _cabinet_home_text(user["school_login"]),
             parse_mode="HTML",
-            reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
+            reply_markup=markup,
         )
     except TelegramBadRequest as exc:
         error_text = str(exc).lower()
@@ -848,9 +865,61 @@ async def cb_cabinet_home(callback: CallbackQuery, config: Config) -> None:
         await callback.message.answer(
             _cabinet_home_text(user["school_login"]),
             parse_mode="HTML",
-            reply_markup=cabinet_home_kb(is_admin=_is_admin(callback.from_user.id, config)),
+            reply_markup=markup,
         )
         await _delete_message_safe(callback.message.bot, callback.message.chat.id, callback.message.message_id)
+
+
+@router.callback_query(F.data == "cabinet:get_invite")
+async def cb_cabinet_get_invite(callback: CallbackQuery, bot: Bot, config: Config) -> None:
+    assert callback.from_user is not None
+    tg_id = callback.from_user.id
+    user = await UserRepo.get_by_tg_id(tg_id)
+    if not user or user["status"] != "approved":
+        await safe_callback_answer(callback, ONLY_APPROVED, show_alert=True)
+        return
+
+    try:
+        chat_member = await bot.get_chat_member(chat_id=config.community_chat_id, user_id=tg_id)
+        if chat_member.status == "kicked":
+            await UserRepo.set_status(tg_id, "kicked")
+            await safe_callback_answer(
+                callback,
+                "Вы были исключены из чата. Для возвращения пройдите повторную верификацию через /start.",
+                show_alert=True,
+            )
+            return
+        if chat_member.status in ("creator", "administrator", "member", "restricted"):
+            await safe_callback_answer(callback, "Вы уже состоите в чате сообщества.", show_alert=True)
+            return
+    except Exception:
+        pass
+
+    from ..services import create_one_time_invite
+    login = user["school_login"] or str(tg_id)
+    try:
+        invite_link = await create_one_time_invite(
+            bot=bot,
+            chat_id=config.community_chat_id,
+            expire_seconds=config.invite_link_expire_seconds,
+            name=f"s21:{login}",
+        )
+        await UserRepo.update_invite_link(tg_id, invite_link)
+    except Exception as exc:
+        logger.error("Failed to generate invite in cabinet for %d: %s", tg_id, exc)
+        await safe_callback_answer(callback, "Не удалось создать ссылку. Обратитесь к модераторам.", show_alert=True)
+        return
+
+    await safe_callback_answer(callback)
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Вступить в чат", url=invite_link)
+    builder.button(text="Личный кабинет", callback_data="cabinet:home")
+    builder.adjust(1)
+    await callback.message.answer(
+        f"Ваша новая ссылка для входа в чат:\n{invite_link}\n\nСрок действия ссылки — 24 часа.",
+        parse_mode="HTML",
+        reply_markup=builder.as_markup(),
+    )
 
 
 @router.callback_query(F.data == "cabinet:gencode")

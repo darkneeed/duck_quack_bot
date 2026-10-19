@@ -87,7 +87,7 @@ async def _send_failed_auth_alert(
         logger.error("Failed to send auth alert: %s", exc)
 
 
-async def _check_and_respond(message: Message, state: FSMContext, config: Config) -> bool:
+async def _check_and_respond(message: Message, state: FSMContext, config: Config, bot: Bot) -> bool:
     assert message.from_user is not None
     user = await UserRepo.get_by_tg_id(message.from_user.id)
     await UserRepo.upsert_basic(
@@ -100,12 +100,82 @@ async def _check_and_respond(message: Message, state: FSMContext, config: Config
         match user["status"]:
             case "approved":
                 login = user["school_login"] or ""
-                await message.answer(
-                    START_APPROVED_GREETING.format(login=login),
-                    parse_mode="HTML",
-                    reply_markup=cabinet_kb(is_admin=message.from_user.id in config.admin_ids),
-                )
+                tg_id = message.from_user.id
+
+                chat_status: str | None = None
+                try:
+                    chat_member = await bot.get_chat_member(chat_id=config.community_chat_id, user_id=tg_id)
+                    chat_status = chat_member.status
+                except Exception as exc:
+                    logger.warning("Could not check chat member status for user %d: %s", tg_id, exc)
+
+                if chat_status == "kicked":
+                    logger.info("Approved user %d (%s) was kicked from community chat, requiring reverification", tg_id, login)
+                    await UserRepo.set_status(tg_id, "kicked")
+                    await message.answer(
+                        "Вы были исключены из чата сообщества.\n"
+                        "Для возвращения в чат необходимо пройти повторную верификацию.",
+                        parse_mode="HTML",
+                    )
+                    await _start_flow(message, state, config)
+                    return True
+
+                if chat_status in ("creator", "administrator", "member", "restricted"):
+                    await message.answer(
+                        START_APPROVED_GREETING.format(login=login),
+                        parse_mode="HTML",
+                        reply_markup=cabinet_kb(is_admin=tg_id in config.admin_ids),
+                    )
+                    return True
+
+                # Пользователь не вошёл или вышел сам: на верификацию не отправлять, выдать новую инвайт-ссылку
+                from ..services import create_one_time_invite
+                try:
+                    invite_link = await create_one_time_invite(
+                        bot=bot,
+                        chat_id=config.community_chat_id,
+                        expire_seconds=config.invite_link_expire_seconds,
+                        name=f"s21:{login or tg_id}",
+                    )
+                    await UserRepo.update_invite_link(tg_id, invite_link)
+                except Exception as exc:
+                    logger.error("Failed to generate invite link for user %d: %s", tg_id, exc)
+                    invite_link = user.get("invite_link") or ""
+
+                builder = InlineKeyboardBuilder()
+                if invite_link:
+                    builder.button(text="Вступить в чат", url=invite_link)
+                builder.button(text="Личный кабинет", callback_data="cabinet:home")
+                builder.adjust(1)
+
+                greeting_login = f"<b>{login}</b>" if login else "участник"
+                text_lines = [
+                    f"Привет, {greeting_login}!",
+                    "",
+                    "Вы уже верифицированы, но пока не состоите в чате сообщества.",
+                ]
+                if invite_link:
+                    text_lines.extend([
+                        "",
+                        f"Ссылка для входа:\n{invite_link}",
+                        "",
+                        "Срок действия ссылки — 24 часа.",
+                    ])
+                await message.answer("\n".join(text_lines), parse_mode="HTML", reply_markup=builder.as_markup())
                 return True
+
+            case "kicked":
+                if await ApplicationRepo.get_pending_for_user(message.from_user.id):
+                    await message.answer(START_ALREADY_PENDING)
+                    return True
+                await message.answer(
+                    "Вы были исключены из чата сообщества.\n"
+                    "Для возвращения в чат необходимо пройти повторную верификацию.",
+                    parse_mode="HTML",
+                )
+                await _start_flow(message, state, config)
+                return True
+
             case "pending":
                 if await ApplicationRepo.get_pending_for_user(message.from_user.id):
                     await message.answer(START_ALREADY_PENDING)
@@ -132,9 +202,9 @@ async def _start_flow(message: Message, state: FSMContext, config: Config) -> No
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext, config: Config) -> None:
+async def cmd_start(message: Message, state: FSMContext, config: Config, bot: Bot) -> None:
     await state.clear()
-    if await _check_and_respond(message, state, config):
+    if await _check_and_respond(message, state, config, bot):
         return
     await _start_flow(message, state, config)
 
@@ -525,6 +595,7 @@ async def _submit_application(
 
     now = now_iso()
     await UserRepo.upsert_basic(tg_id, tg_name, tg_username)
+    await UserRepo.set_status(tg_id, "pending")
     await UserRepo.set_application_date(tg_id, now)
 
     if rc_username:
@@ -664,9 +735,9 @@ async def _submit_application(
 
 
 @router.message()
-async def fallback(message: Message, state: FSMContext, config: Config) -> None:
+async def fallback(message: Message, state: FSMContext, config: Config, bot: Bot) -> None:
     if await state.get_state() is not None:
         return
-    if await _check_and_respond(message, state, config):
+    if await _check_and_respond(message, state, config, bot):
         return
     await _start_flow(message, state, config)

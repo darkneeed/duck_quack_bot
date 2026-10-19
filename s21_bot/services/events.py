@@ -66,36 +66,54 @@ def _time_window() -> tuple[str, str]:
 
 
 async def run_events_poller(bot: Bot, s21: S21Client, config: Config) -> None:
-    if not config.events_topic_id:
-        logger.info("Events poller disabled (EVENTS_TOPIC_ID=0)")
-        return
-
     poll_interval = config.api_poll_interval
-    events_thread_id = config.events_topic_id
-    logger.info("Events poller started, interval=%ds", poll_interval)
-
-    try:
-        from_dt, to_dt = _time_window()
-        events = await s21.get_events(from_dt, to_dt)
-        for e in events:
-            _seen_event_ids.add(str(e.get("id", "")))
-        logger.info("Events poller: seeded %d events", len(_seen_event_ids))
-    except Exception as exc:
-        logger.warning("Events poller seed failed: %s", exc)
+    logger.info("Events poller initialized, poll interval=%ds", poll_interval)
+    seeded = False
 
     while True:
-        await asyncio.sleep(poll_interval)
         try:
+            if not getattr(config, "enable_events", True):
+                logger.debug("Events poller is disabled (enable_events=False)")
+                await asyncio.sleep(poll_interval)
+                continue
+
+            events_thread_id = config.events_topic_id
+            if not events_thread_id:
+                logger.debug("Events poller is disabled (events_topic_id=0)")
+                await asyncio.sleep(poll_interval)
+                continue
+
+            target_chat_id = getattr(config, "events_chat_id", 0) or config.community_chat_id
+
+            if not seeded:
+                try:
+                    from_dt, to_dt = _time_window()
+                    events = await s21.get_events(from_dt, to_dt)
+                    for e in events:
+                        _seen_event_ids.add(str(e.get("id", "")))
+                    logger.info("Events poller: seeded %d events", len(_seen_event_ids))
+                    seeded = True
+                except Exception as exc:
+                    logger.warning("Events poller seed failed: %s", exc)
+
             from_dt, to_dt = _time_window()
             events = await s21.get_events(from_dt, to_dt)
             for event in events:
                 eid = str(event.get("id", ""))
                 if not eid or eid in _seen_event_ids:
                     continue
+
+                if getattr(config, "events_exclude_tribes", False):
+                    event_type = (event.get("type") or "").strip().lower()
+                    if event_type == "трайб":
+                        _seen_event_ids.add(eid)
+                        logger.info("Skipping tribe event id=%s name=%s", eid, event.get("name"))
+                        continue
+
                 text = _format_event(event, config)
                 sent = await send_message_with_topic(
                     bot,
-                    chat_id=config.moderation_chat_id,
+                    chat_id=target_chat_id,
                     message_thread_id=events_thread_id or None,
                     topic_name="EVENTS_TOPIC_ID",
                     topic_logger=logger,
@@ -105,14 +123,13 @@ async def run_events_poller(bot: Bot, s21: S21Client, config: Config) -> None:
                 )
                 if sent is None and events_thread_id:
                     logger.warning(
-                        "Disabling EVENTS_TOPIC_ID for current poller run: chat_id=%s thread_id=%s",
-                        config.moderation_chat_id,
+                        "Disabling EVENTS_TOPIC_ID for fallback run: chat_id=%s thread_id=%s",
+                        target_chat_id,
                         events_thread_id,
                     )
-                    events_thread_id = 0
                     sent = await send_message_with_topic(
                         bot,
-                        chat_id=config.moderation_chat_id,
+                        chat_id=target_chat_id,
                         message_thread_id=None,
                         topic_name="EVENTS_TOPIC_ID",
                         topic_logger=logger,
@@ -122,8 +139,10 @@ async def run_events_poller(bot: Bot, s21: S21Client, config: Config) -> None:
                     )
                 if sent is not None:
                     _seen_event_ids.add(eid)
-                    logger.info("Posted new event id=%s name=%s", eid, event.get("name"))
+                    logger.info("Posted new event id=%s name=%s to chat %s thread %s", eid, event.get("name"), target_chat_id, events_thread_id)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.error("Events poller error: %s", exc)
+
+        await asyncio.sleep(poll_interval)

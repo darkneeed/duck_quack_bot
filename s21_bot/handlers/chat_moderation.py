@@ -11,6 +11,7 @@ from ..config import Config
 from ..strings import tg_mention
 
 
+from ..db import UserRepo
 from ..db.moderator_repo import ModeratorRepo
 from ..services.antispam import get_config, set_config, set_enabled
 from ..services.community_moderation import (
@@ -64,6 +65,7 @@ async def cmd_ban(message: Message, bot: Bot, config: Config) -> None:
 
     try:
         await bot.ban_chat_member(chat_id=config.community_chat_id, user_id=target_id)
+        await UserRepo.set_status(target_id, "kicked")
     except Exception as exc:
         await message.reply(f"❌ Не удалось забанить: <code>{exc}</code>", parse_mode="HTML")
         return
