@@ -138,6 +138,9 @@ class Config:
     social_trust_project_ids: frozenset = field(default_factory=frozenset)
     rc_username: str = field(default="")
     rc_password: str = field(default="")
+    bridge_api_url: str = field(default="https://quack-21.mwnd.tech")
+    bridge_secret: str = field(default="")
+    kryaken_mini_app_url: str = field(default="https://quack-21.mwnd.tech")
 
 
 def _parse_bool(value: str) -> bool:
@@ -261,4 +264,7 @@ def load_config() -> Config:
         rc_username=os.environ.get("RC_USERNAME", ""),
         rc_password=os.environ.get("RC_PASSWORD", ""),
         db_path=os.environ.get("DB_PATH", "data/bot.db"),
+        bridge_api_url=os.environ.get("BRIDGE_API_URL", "https://quack-21.mwnd.tech"),
+        bridge_secret=os.environ.get("BRIDGE_SECRET", ""),
+        kryaken_mini_app_url=os.environ.get("KRYAKEN_MINI_APP_URL", "https://quack-21.mwnd.tech"),
     )

@@ -10,13 +10,18 @@ from s21_bot.config import apply_config_overrides, get_legacy_runtime_overrides,
 from s21_bot.db import BotSettingsRepo, init_db
 from s21_bot.db.models import set_db_path
 from s21_bot.handlers import setup_routers
+from s21_bot.handlers.bridge_chats import router as bridge_chats_router
+from s21_bot.handlers.kryaken import router as kryaken_router, setup_kryaken_menu
 from s21_bot.middlewares import BanCheckMiddleware
+from s21_bot.middlewares.chat_approval import ChatApprovalMiddleware
 from s21_bot.services import (
     S21Client, run_events_poller, run_workstation_poller,
     run_digest, run_api_monitor, run_pending_alert,
     run_review_poller, run_cache_poller,
     RocketChatClient,
 )
+from s21_bot.services.bridge_client import BridgeClient
+from s21_bot.services.bridge_state import BridgeState
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,13 +77,32 @@ async def main() -> None:
     except Exception as exc:
         logger.warning("Failed to set bot commands: %s", exc)
 
+    try:
+        await setup_kryaken_menu(bot, config.kryaken_mini_app_url)
+    except Exception as exc:
+        logger.warning("Failed to configure Kryaken menu button: %s", exc)
+
+    bridge_state = BridgeState()
+    bridge_client = BridgeClient(
+        base_url=config.bridge_api_url,
+        secret=config.bridge_secret,
+        bridge_state=bridge_state,
+    )
+
     dp = Dispatcher(storage=MemoryStorage())
     dp.message.middleware(BanCheckMiddleware())
     dp.callback_query.middleware(BanCheckMiddleware())
+    dp.message.middleware(ChatApprovalMiddleware(bridge_state=bridge_state))
+    dp.callback_query.middleware(ChatApprovalMiddleware(bridge_state=bridge_state))
+    dp.my_chat_member.middleware(ChatApprovalMiddleware(bridge_state=bridge_state))
     dp["config"] = config
     dp["s21"] = s21_client
     dp["rc"] = rc_client
+    dp["bridge_state"] = bridge_state
+    dp["bridge_client"] = bridge_client
 
+    dp.include_router(kryaken_router)
+    dp.include_router(bridge_chats_router)
     dp.include_router(setup_routers())
 
     loop = asyncio.get_event_loop()
@@ -90,15 +114,20 @@ async def main() -> None:
         loop.create_task(run_pending_alert(bot, config)),
         loop.create_task(run_review_poller(bot, s21_client, config)),
         loop.create_task(run_cache_poller(bot, s21_client, config)),
+        bridge_client.start_sync_task(),
     ]
 
     logger.info("Bot starting…")
     try:
-        await dp.start_polling(bot, allowed_updates=["message", "callback_query", "chat_member"])
+        await dp.start_polling(
+            bot,
+            allowed_updates=["message", "callback_query", "chat_member", "my_chat_member"],
+        )
     finally:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        await bridge_client.close()
         await s21_client.close()
         await rc_client.close()
         await bot.session.close()

@@ -3,18 +3,17 @@ from __future__ import annotations
 import asyncio
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import pytest_asyncio
-from aiogram.types import ChatMemberMember, ChatMemberBanned, ChatMemberLeft, User
+from aiogram.types import User
 
-from s21_bot.config import Config, set_config_value, serialize_runtime_config
-from s21_bot.db.models import set_db_path, init_db, get_db
+from s21_bot.config import Config, set_config_value
+from s21_bot.db.models import set_db_path, init_db
 from s21_bot.db.user_repo import UserRepo
-from s21_bot.db.application_repo import ApplicationRepo
 from s21_bot.handlers.auth import _check_and_respond
-from s21_bot.handlers.admin_panel import _format_value, _panel_text
+from s21_bot.handlers.admin_panel import _format_value
 from s21_bot.services.events import run_events_poller
 
 

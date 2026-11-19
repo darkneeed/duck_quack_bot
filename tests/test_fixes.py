@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import tempfile
 import pytest
@@ -16,8 +16,7 @@ from s21_bot.db.s21_cache_repo import S21CacheRepo
 from s21_bot.utils.collections import BoundedSet
 from s21_bot.middlewares.ban_check import BanCheckMiddleware
 from s21_bot.services.invite import create_one_time_invite
-from s21_bot.services.invite_code_service import attach_invite_code_to_request, create_invite_code, AttachResult
-from s21_bot.handlers.export import IsModeratorInModChat, _serialize_csv
+from s21_bot.handlers.export import IsModeratorInModChat
 
 
 @pytest_asyncio.fixture
@@ -389,7 +388,6 @@ async def test_where_cmd_peers_no_api_starvation(temp_db):
 async def test_s21_api_lock_and_timeout():
     from s21_bot.services.s21_api import S21Client
     from s21_bot.services.rocketchat import RocketChatClient
-    import aiohttp
 
     client = S21Client("user", "pass")
     assert hasattr(client, "_auth_lock")

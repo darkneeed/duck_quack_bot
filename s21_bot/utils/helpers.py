@@ -92,7 +92,7 @@ def build_moderation_card(
     if rc_username:
         lines.append(CARD_RC.format(rc=rc_username))
     if teammates:
-        logins_str = ", ".join(f"<code>{l}</code>" for l in teammates)
+        logins_str = ", ".join(f"<code>{login}</code>" for login in teammates)
         lines.append(CARD_TEAMMATES.format(logins=logins_str))
     if invite_code:
         lines.append(f"🎟 <b>Инвайт:</b> <code>{invite_code}</code>")
