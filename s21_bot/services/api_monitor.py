@@ -2,7 +2,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone, timedelta
 
 import aiohttp
 from aiogram import Bot

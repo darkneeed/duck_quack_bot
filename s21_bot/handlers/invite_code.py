@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from aiogram import Bot, F, Router
+from aiogram import Bot, Router
 from aiogram.filters import Filter as AiogramFilter
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -15,8 +15,7 @@ from ..db import UserRepo
 import io
 
 from ..strings import (
-    INVITE_ACCEPTED_START, INVITE_INVALID, INVITE_NO_APP_STORED,
-    INVITE_ATTACHED_OK, INVITE_ALREADY_ATTACHED, INVITE_ATTACH_FAILED,
+    INVITE_ACCEPTED_START, INVITE_INVALID, INVITE_ATTACHED_OK, INVITE_ALREADY_ATTACHED, INVITE_ATTACH_FAILED,
     INVITE_GENCODE_CAPTION, INVITE_GENCODE_ERROR,
     INVITE_NO_CODES, INVITE_CODES_HEADER,
 )

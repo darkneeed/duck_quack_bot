@@ -4,7 +4,7 @@ import csv
 import io
 import logging
 from aiogram import Router
-from aiogram.filters import Command, Filter
+from aiogram.filters import Command
 from aiogram.types import Message, BufferedInputFile
 from ..config import Config
 from ..db import UserRepo, ApplicationRepo
