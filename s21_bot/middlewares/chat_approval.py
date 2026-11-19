@@ -18,11 +18,18 @@ class ChatApprovalMiddleware(BaseMiddleware):
     In unapproved groups, supergroups, and channels, incoming events are silently
     dropped without any response, delete, or handler invocation. In approved chats,
     the chat-specific configuration is injected into handler context data.
+    System chats (moderation chat, community chat, events chat) are always exempt
+    from approval checks.
     """
 
-    def __init__(self, bridge_state: BridgeState) -> None:
+    def __init__(
+        self,
+        bridge_state: BridgeState,
+        system_chat_ids: set[int] | None = None,
+    ) -> None:
         super().__init__()
         self.bridge_state = bridge_state
+        self.system_chat_ids: set[int] = {cid for cid in (system_chat_ids or set()) if cid}
 
     async def __call__(
         self,
@@ -55,6 +62,21 @@ class ChatApprovalMiddleware(BaseMiddleware):
         chat_id = getattr(chat, "id", None)
         if chat_id is None:
             return await handler(event, data)
+
+        # System chats configured on middleware are always allowed
+        if chat_id in self.system_chat_ids:
+            return await handler(event, data)
+
+        # System chats configured in runtime config are always allowed
+        cfg = data.get("config")
+        if cfg is not None:
+            config_system_chat_ids = {
+                getattr(cfg, "moderation_chat_id", None),
+                getattr(cfg, "community_chat_id", None),
+                getattr(cfg, "events_chat_id", None),
+            }
+            if chat_id in config_system_chat_ids:
+                return await handler(event, data)
 
         if not self.bridge_state.is_chat_approved(chat_id):
             # Silently drop update without answering, replying, or deleting

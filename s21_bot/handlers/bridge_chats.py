@@ -23,6 +23,10 @@ async def on_my_chat_member(
     if not event.chat or not event.old_chat_member or not event.new_chat_member:
         return
 
+    # Ignore private chats (managed chats are strictly group, supergroup, or channel)
+    if event.chat.type == "private":
+        return
+
     old_status = event.old_chat_member.status
     new_status = event.new_chat_member.status
 
@@ -45,9 +49,10 @@ async def on_my_chat_member(
 
     report_fn = getattr(bridge_client, "report_chat_event", None) or getattr(bridge_client, "post_chat_event", None)
     if report_fn is not None:
+        title = event.chat.title or getattr(event.chat, "full_name", None) or f"Chat {event.chat.id}"
         await report_fn(
             tg_chat_id=event.chat.id,
-            title=event.chat.title or "",
+            title=title,
             chat_type=event.chat.type,
             action=action,
         )
