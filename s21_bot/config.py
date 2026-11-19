@@ -265,6 +265,6 @@ def load_config() -> Config:
         rc_password=os.environ.get("RC_PASSWORD", ""),
         db_path=os.environ.get("DB_PATH", "data/bot.db"),
         bridge_api_url=os.environ.get("BRIDGE_API_URL", "https://quack-21.mwnd.tech"),
-        bridge_secret=os.environ.get("BRIDGE_SECRET", ""),
-        kryaken_mini_app_url=os.environ.get("KRYAKEN_MINI_APP_URL", "https://quack-21.mwnd.tech"),
+        bridge_secret=os.environ.get("BRIDGE_SECRET") or os.environ.get("BRIDGE_SECRET_KEY", ""),
+        kryaken_mini_app_url=os.environ.get("KRYAKEN_MINI_APP_URL") or os.environ.get("KRYAKEN_WEBAPP_URL", "https://quack-21.mwnd.tech"),
     )

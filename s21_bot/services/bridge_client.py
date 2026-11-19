@@ -30,7 +30,12 @@ class BridgeClient:
         session: aiohttp.ClientSession | None = None,
     ) -> None:
         raw_url = base_url or bridge_url or "https://quack-21.mwnd.tech"
-        self.base_url: str = raw_url.rstrip("/")
+        clean_url = raw_url.rstrip("/")
+        if clean_url.endswith("/api/v1/bridge"):
+            clean_url = clean_url[:-len("/api/v1/bridge")].rstrip("/")
+        elif clean_url.endswith("/api/v1"):
+            clean_url = clean_url[:-len("/api/v1")].rstrip("/")
+        self.base_url: str = clean_url
         self.secret: str = secret or bridge_secret or ""
         self.state: BridgeState | None = bridge_state if bridge_state is not None else state
         self.sync_interval: int = sync_interval
