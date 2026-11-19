@@ -636,6 +636,26 @@ async def test_my_chat_member_bot_rights_changed():
     )
 
 
+@pytest.mark.asyncio
+async def test_my_chat_member_private_chat_ignored():
+    """Verify that private chat member updates are ignored and not sent to bridge."""
+    from s21_bot.handlers.bridge_chats import on_my_chat_member
+
+    bot_user = User(id=111111, is_bot=True, first_name="KryakenBot", username="kryaken_bot")
+    chat = Chat(id=12345678, type="private")
+
+    update = MagicMock(spec=ChatMemberUpdated)
+    update.chat = chat
+    update.old_chat_member = ChatMemberLeft(user=bot_user)
+    update.new_chat_member = ChatMemberMember(user=bot_user)
+
+    mock_bridge = AsyncMock()
+
+    await on_my_chat_member(update, bridge_client=mock_bridge)
+
+    assert not mock_bridge.report_chat_event.called
+
+
 # ============================================================================
 # 5. Bot Navigation & Mini App (/kryaken) Tests
 # ============================================================================

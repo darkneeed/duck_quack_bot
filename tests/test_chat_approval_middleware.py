@@ -434,3 +434,74 @@ async def test_chat_approval_middleware_callback_query_approved_chat_allows():
     assert data.get("chat_config") == {"antispam_limit": 10}
     assert res == "cq_handled"
 
+
+@pytest.mark.asyncio
+async def test_chat_approval_middleware_exempts_moderation_and_community_chats():
+    """Verify that CallbackQuery and Message in moderation and community chats
+    are always permitted even if they are NOT in bridge_state.approved_chats.
+    This fixes the bug where moderator approve/reject buttons stopped responding.
+    """
+    ChatApprovalMiddleware = _get_chat_approval_middleware_class()
+    BridgeState = _get_bridge_state_class()
+
+    state = BridgeState()
+    # Ensure moderation chat and community chat are NOT in approved_chats
+    mod_chat_id = -1003838404773
+    comm_chat_id = -1003864598898
+    assert not state.is_chat_approved(mod_chat_id)
+    assert not state.is_chat_approved(comm_chat_id)
+
+    mock_config = MagicMock()
+    mock_config.moderation_chat_id = mod_chat_id
+    mock_config.community_chat_id = comm_chat_id
+    mock_config.events_chat_id = 0
+
+    middleware = ChatApprovalMiddleware(bridge_state=state)
+
+    # 1. Callback query on moderation card in moderation chat
+    cq = MagicMock(spec=CallbackQuery)
+    cq.message = _make_message(chat_id=mod_chat_id, chat_type="supergroup")
+    cq.answer = AsyncMock()
+
+    handler = AsyncMock(return_value="moderation_action_ok")
+    data = {"config": mock_config}
+
+    res = await middleware(handler, cq, data)
+    assert handler.called
+    assert res == "moderation_action_ok"
+
+    # 2. Message in moderation chat
+    msg = _make_message(chat_id=mod_chat_id, chat_type="supergroup", text="/approve 208")
+    handler2 = AsyncMock(return_value="msg_ok")
+    res2 = await middleware(handler2, msg, data)
+    assert handler2.called
+    assert res2 == "msg_ok"
+
+    # 3. Callback query in community chat
+    cq_comm = MagicMock(spec=CallbackQuery)
+    cq_comm.message = _make_message(chat_id=comm_chat_id, chat_type="supergroup")
+    handler3 = AsyncMock(return_value="community_action_ok")
+    res3 = await middleware(handler3, cq_comm, data)
+    assert handler3.called
+    assert res3 == "community_action_ok"
+
+
+@pytest.mark.asyncio
+async def test_chat_approval_middleware_exempts_system_chat_ids_param():
+    """Verify that system_chat_ids passed directly in constructor are exempt."""
+    ChatApprovalMiddleware = _get_chat_approval_middleware_class()
+    BridgeState = _get_bridge_state_class()
+
+    state = BridgeState()
+    system_chat_id = -100987654321
+    middleware = ChatApprovalMiddleware(bridge_state=state, system_chat_ids={system_chat_id})
+
+    msg = _make_message(chat_id=system_chat_id, chat_type="supergroup", text="Hello system")
+    handler = AsyncMock(return_value="system_chat_ok")
+    data: dict = {}
+
+    res = await middleware(handler, msg, data)
+    assert handler.called
+    assert res == "system_chat_ok"
+
+
