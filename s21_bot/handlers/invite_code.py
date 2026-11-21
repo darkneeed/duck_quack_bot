@@ -36,14 +36,16 @@ _PENDING_CODE_KEY = "pending_invite_code"
 
 
 @router.message(CommandStart(deep_link=True))
-async def cmd_start_with_code(message: Message, state: FSMContext, config: Config) -> None:
+async def cmd_start_with_code(
+    message: Message, state: FSMContext, config: Config, bot: Bot
+) -> None:
     assert message.from_user is not None
     payload = (message.text or "").split(maxsplit=1)
     code = payload[1].strip().upper() if len(payload) > 1 else ""
 
     from .auth import _check_and_respond, _start_flow
 
-    if await _check_and_respond(message, state, config):
+    if await _check_and_respond(message, state, config, bot):
         return
 
     if not code:
