@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import html
 import os
 from typing import TYPE_CHECKING
 
-from aiogram import Bot, Router
-from aiogram.filters import Command
+from aiogram import Bot, F, Router
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     MenuButtonWebApp,
     Message,
     WebAppInfo,
 )
+
+from s21_bot.services.bridge_client import BridgeClient
 
 if TYPE_CHECKING:
     from s21_bot.config import Config
@@ -90,3 +94,91 @@ async def cmd_kryaken(
         reply_markup=keyboard,
         parse_mode="HTML",
     )
+
+
+@router.message(CommandStart(deep_link=True, magic=F.args.startswith("link_")))
+async def cmd_start_tg_link(
+    message: Message,
+    command: CommandObject,
+    bridge_client: BridgeClient,
+    config: Config | None = None,
+) -> None:
+    """Handle deep link from Kryaken profile to bind Telegram account."""
+    arg = (command.args or "").strip()
+    raw_token = arg[len("link_") :]
+    from_user = message.from_user
+    if not from_user:
+        return
+
+    res = await bridge_client.consume_tg_link(
+        raw_token=raw_token,
+        tg_id=from_user.id,
+        tg_username=from_user.username,
+        tg_name=from_user.full_name,
+    )
+
+    mini_app_url = get_kryaken_mini_app_url(config)
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📱 Открыть Крякен",
+                    web_app=WebAppInfo(url=mini_app_url),
+                )
+            ]
+        ]
+    )
+
+    if res and res.get("ok"):
+        login = res.get("school_login") or ""
+        await message.answer(
+            f"✅ Telegram успешно привязан к аккаунту Крякен <b>{html.escape(login)}</b>!",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+    else:
+        err = (
+            (res and res.get("error"))
+            or "Не удалось привязать Telegram. Ссылка устарела или недействительна."
+        )
+        await message.answer(f"⚠️ {err}", reply_markup=kb)
+
+
+@router.callback_query(
+    F.data.startswith("tracc:")
+    | (F.data == "bot_transfers_info")
+    | F.data.startswith("volmod:")
+    | F.data.startswith("trmod:")
+    | F.data.startswith("penmod:")
+)
+async def cb_kryaken_callback(
+    callback: CallbackQuery,
+    bridge_client: BridgeClient,
+) -> None:
+    """Forward volunteer/ADM actions to Kryaken Bridge API."""
+    from_user = callback.from_user
+    if not from_user or not callback.data:
+        return
+
+    res = await bridge_client.handle_callback(
+        callback_data=callback.data,
+        tg_id=from_user.id,
+        tg_username=from_user.username,
+        tg_name=from_user.full_name,
+    )
+
+    if res and res.get("ok"):
+        answer = res.get("answer_text") or "Действие выполнено!"
+        await callback.answer(answer, show_alert=res.get("alert", False))
+        if callback.message and isinstance(callback.message, Message) and res.get("message_text"):
+            try:
+                await callback.message.edit_text(res["message_text"], parse_mode="HTML")
+            except Exception:
+                pass
+    else:
+        err = (
+            (res and res.get("error"))
+            or (res and res.get("answer_text"))
+            or "Ошибка обработки запроса."
+        )
+        await callback.answer(err, show_alert=True)

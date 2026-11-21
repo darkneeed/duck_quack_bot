@@ -181,3 +181,83 @@ class BridgeClient:
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
+
+    async def consume_tg_link(
+        self,
+        raw_token: str,
+        tg_id: int,
+        tg_username: str | None = None,
+        tg_name: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Consume a Kryaken one-time Telegram link token."""
+        url = f"{self.base_url}/api/v1/bridge/tg-link/consume"
+        headers = {
+            "X-Bridge-Secret": self.secret,
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "raw_token": raw_token,
+            "tg_id": int(tg_id),
+            "tg_username": tg_username,
+            "tg_name": tg_name,
+        }
+        try:
+            session = await self._get_session()
+            async with session.post(url, json=payload, headers=headers) as resp:
+                data = None
+                try:
+                    data = await resp.json()
+                except Exception:
+                    pass
+                if resp.status >= 400:
+                    logger.warning("Bridge tg-link consume failed with status HTTP %d", resp.status)
+                    if isinstance(data, dict):
+                        return data
+                    return None
+                return data
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            logger.warning("Bridge tg-link consume network error: %s", exc)
+            return None
+        except Exception as exc:
+            logger.warning("Bridge tg-link consume unexpected error: %s", exc)
+            return None
+
+    async def handle_callback(
+        self,
+        callback_data: str,
+        tg_id: int,
+        tg_username: str | None = None,
+        tg_name: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Forward an inline button callback to Kryaken Bridge API."""
+        url = f"{self.base_url}/api/v1/bridge/callback"
+        headers = {
+            "X-Bridge-Secret": self.secret,
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "callback_data": callback_data,
+            "tg_id": int(tg_id),
+            "tg_username": tg_username,
+            "tg_name": tg_name,
+        }
+        try:
+            session = await self._get_session()
+            async with session.post(url, json=payload, headers=headers) as resp:
+                data = None
+                try:
+                    data = await resp.json()
+                except Exception:
+                    pass
+                if resp.status >= 400:
+                    logger.warning("Bridge callback failed with status HTTP %d", resp.status)
+                    if isinstance(data, dict):
+                        return data
+                    return None
+                return data
+        except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+            logger.warning("Bridge callback network error: %s", exc)
+            return None
+        except Exception as exc:
+            logger.warning("Bridge callback unexpected error: %s", exc)
+            return None

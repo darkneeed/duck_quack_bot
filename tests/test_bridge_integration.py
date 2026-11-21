@@ -925,3 +925,71 @@ def test_bridge_state_get_command_scope_robust_input():
     assert state.get_command_scope("/WHERE") == "PUBLIC"
     assert state.get_command_scope("/Profile@MyBot") == "OFF"
 
+
+@pytest.mark.asyncio
+async def test_bridge_client_consume_tg_link_success():
+    BridgeClient = _get_bridge_client_class()
+    client = BridgeClient(base_url="https://quack-21.mwnd.tech", secret="test_secret")
+
+    fake_resp = FakeResponse(status=200, json_data={"ok": True, "school_login": "ashlilar"})
+    with patch.object(aiohttp.ClientSession, "post", return_value=fake_resp):
+        res = await client.consume_tg_link("raw_token_123", tg_id=2045332522, tg_username="VelikiyXaos")
+        assert res == {"ok": True, "school_login": "ashlilar"}
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_bridge_client_consume_tg_link_error():
+    BridgeClient = _get_bridge_client_class()
+    client = BridgeClient(base_url="https://quack-21.mwnd.tech", secret="test_secret")
+
+    fake_resp = FakeResponse(status=400, json_data={"ok": False, "error": "Token expired"})
+    with patch.object(aiohttp.ClientSession, "post", return_value=fake_resp):
+        res = await client.consume_tg_link("raw_token_123", tg_id=2045332522)
+        assert res == {"ok": False, "error": "Token expired"}
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_tg_link_handler():
+    from aiogram.filters import CommandObject
+    from s21_bot.handlers.kryaken import cmd_start_tg_link
+
+    message = AsyncMock(spec=Message)
+    message.from_user = User(id=2045332522, is_bot=False, first_name="D", username="VelikiyXaos")
+    message.answer = AsyncMock()
+
+    bridge_client = AsyncMock()
+    bridge_client.consume_tg_link.return_value = {"ok": True, "school_login": "ashlilar"}
+
+    cmd = CommandObject(prefix="/", command="start", args="link_Gd9ezoPxZ9P7l4n9H7d1mv6OrvgcckcAvVreSY9YrYQ")
+    await cmd_start_tg_link(message, cmd, bridge_client)
+
+    bridge_client.consume_tg_link.assert_awaited_once_with(
+        raw_token="Gd9ezoPxZ9P7l4n9H7d1mv6OrvgcckcAvVreSY9YrYQ",
+        tg_id=2045332522,
+        tg_username="VelikiyXaos",
+        tg_name="D",
+    )
+    message.answer.assert_awaited_once()
+    assert "Telegram успешно привязан к аккаунту Крякен <b>ashlilar</b>!" in message.answer.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_cmd_start_with_code_signature():
+    from aiogram import Bot
+    from aiogram.fsm.context import FSMContext
+    from s21_bot.handlers.invite_code import cmd_start_with_code
+
+    message = AsyncMock(spec=Message)
+    message.from_user = User(id=123, is_bot=False, first_name="Test")
+    message.text = "/start INVITE123"
+    state = AsyncMock(spec=FSMContext)
+    config = MagicMock()
+    bot = AsyncMock(spec=Bot)
+
+    with patch("s21_bot.handlers.auth._check_and_respond", AsyncMock(return_value=True)) as mock_check:
+        await cmd_start_with_code(message, state, config, bot)
+        mock_check.assert_awaited_once_with(message, state, config, bot)
+
+
